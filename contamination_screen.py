@@ -267,7 +267,12 @@ def filter_vcf(src: Path, dst: Path, pass_only: bool, tmpdir: Path) -> None:
              Exact clinical pipeline expression. Records matching the exclude
              criteria have EXCLUDE appended to their FILTER column.
 
-      4. bcftools view [-f PASS] -e 'FILTER~"EXCLUDE"'
+      4. bcftools filter -e '(FORMAT/DP<99 || AF<0.03)'
+             Hard-filter: remove low-depth (DP < 99) and low-VAF (AF < 0.03)
+             variants. Matches the clinical pipeline quality threshold.
+             Note: AF < 0.03 is consistent with --min-af (default 0.03).
+
+      5. bcftools view [-f PASS] -e 'FILTER~"EXCLUDE"'
              Hard-filter: drop all EXCLUDE-tagged records. In PASS-only mode
              (-f PASS), also drop any records that were not originally PASS.
     """
@@ -300,11 +305,18 @@ def filter_vcf(src: Path, dst: Path, pass_only: bool, tmpdir: Path) -> None:
         "-Ou",
     ]
 
-    # ── Step 4: hard-filter ──────────────────────────────────────────────────
-    cmd4 = ["bcftools", "view", "-e", f'FILTER~"{_SOFT_FILTER_NAME}"']
+    # ── Step 4: hard-filter low depth / low VAF ───────────────────────────────
+    cmd4 = [
+        "bcftools", "filter",
+        "-e", "(FORMAT/DP<99 || AF<0.03)",
+        "-Ou",
+    ]
+
+    # ── Step 5: hard-filter EXCLUDE tags (+ optional PASS restriction) ────────
+    cmd5 = ["bcftools", "view", "-e", f'FILTER~"{_SOFT_FILTER_NAME}"']
     if pass_only:
-        cmd4 += ["-f", "PASS"]
-    cmd4 += ["-Oz", "-o", str(dst)]
+        cmd5 += ["-f", "PASS"]
+    cmd5 += ["-Oz", "-o", str(dst)]
 
     logging.debug("Filter pipeline for %s", src.name)
     p1 = subprocess.Popen(cmd1, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -317,18 +329,21 @@ def filter_vcf(src: Path, dst: Path, pass_only: bool, tmpdir: Path) -> None:
     p4 = subprocess.Popen(cmd4, stdin=p3.stdout, stdout=subprocess.PIPE,
                           stderr=subprocess.PIPE)
     p3.stdout.close()
+    p5 = subprocess.Popen(cmd5, stdin=p4.stdout, stdout=subprocess.PIPE,
+                          stderr=subprocess.PIPE)
+    p4.stdout.close()
 
-    _, p4_err = p4.communicate()
-    p1.wait(); p2.wait(); p3.wait()
+    _, p5_err = p5.communicate()
+    p1.wait(); p2.wait(); p3.wait(); p4.wait()
 
     for proc, name in [
         (p1, "split-vep"), (p2, "reheader"),
-        (p3, "filter"), (p4, "view/hard-filter"),
+        (p3, "filter/EXCLUDE"), (p4, "filter/DP+AF"), (p5, "view/hard-filter"),
     ]:
         if proc.returncode != 0:
             stderr = proc.stderr.read().decode() if proc.stderr else ""
             raise RuntimeError(
-                f"bcftools {name} failed for {src.name}:\n{stderr}\n{p4_err.decode()}"
+                f"bcftools {name} failed for {src.name}:\n{stderr}\n{p5_err.decode()}"
             )
 
     _run(["bcftools", "index", "-t", str(dst)])
