@@ -79,14 +79,12 @@ def parse_args() -> argparse.Namespace:
              "assessing a pair (default: %(default)s)",
     )
     p.add_argument(
-        "--peak-count", type=int, default=8,
+        "--peak-count", type=int, default=6,
         help="Flag a pair if the non-unity peak contains >= this many "
-             "variants (default: %(default)s)",
-    )
-    p.add_argument(
-        "--peak-fraction", type=float, default=0.30,
-        help="Flag a pair if the non-unity peak fraction >= this value "
-             "(default: %(default)s)",
+             "variants. Derived from null model: under uniform distribution "
+             "of ~20 variants across 37 non-unity bins, P(max>=6) < 0.001 "
+             "per pair, giving <1 expected false positive for cohorts up to "
+             "~100 samples. (default: %(default)s)",
     )
     p.add_argument(
         "--threads", "-t", type=int, default=min(8, cpu_count()),
@@ -472,16 +470,12 @@ def _apply_flags(
     results: List[dict],
     min_shared: int,
     peak_count_thresh: int,
-    peak_frac_thresh: float,
 ) -> pd.DataFrame:
     """Convert results to DataFrame and flag pairs based on NON-UNITY peak."""
     df = pd.DataFrame(results)
     df["flagged"] = (
         (df["n_shared"] >= min_shared) &
-        (
-            (df["peak_count"] >= peak_count_thresh) |
-            (df["peak_fraction"] >= peak_frac_thresh)
-        )
+        (df["peak_count"] >= peak_count_thresh)
     )
     for col in ["overall_log2", "overall_ratio", "overall_fraction",
                 "peak_log2_ratio", "peak_ratio",
@@ -724,7 +718,6 @@ def main() -> None:
         raw_results,
         min_shared=args.min_shared,
         peak_count_thresh=args.peak_count,
-        peak_frac_thresh=args.peak_fraction,
     )
     write_summary(summary_df, args.outdir)
     write_matrix(raw_results, sample_names, args.outdir)

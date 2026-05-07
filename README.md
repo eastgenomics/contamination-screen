@@ -139,15 +139,17 @@ variant) to avoid duplicate records.
 
 ### Flagging thresholds
 
-A pair is flagged if **both**:
+A pair is flagged when:
 
-- `n_informative >= --min-shared` (default 10)
+- `n_shared >= --min-shared` (default 10) — enough shared variants to assess
+- **AND** `peak_count >= --peak-count` (default 6) — the non-unity peak has a
+  statistically significant cluster
 
-**and at least one of**:
-
-- `peak_count >= --peak-count` (default 8) — the non-unity peak has >= 8 variants
-- `peak_fraction >= --peak-fraction` (default 0.30) — >= 30% of informative
-  shared variants fall in the non-unity peak
+The `--peak-count` default of **6** is derived from a null model: under uniform
+distribution of ~20 variants across 37 non-unity histogram bins (each 0.2 log2
+units wide), P(max bin >= 6) < 0.001 per pair. For a 48-sample cohort (1,128
+pairs), this gives < 1 expected false positive. For larger cohorts (96+
+samples), increase to 7.
 
 ---
 
@@ -182,9 +184,8 @@ contamination_screen.py VCF_DIR [options]
 | `--max-gnomad` | `0.40` | Exclude variants with gnomAD AF >= this (removes hom/het artefact). Set to 1.0 to disable |
 | `--min-af` | `0.03` | VAF floor for informative variants |
 | `--min-dp` | `99` | Minimum read depth |
-| `--min-shared` | `10` | Minimum informative shared variants to assess |
-| `--peak-count` | `8` | Flag if non-unity peak has >= N variants |
-| `--peak-fraction` | `0.30` | Flag if non-unity peak fraction >= this |
+| `--min-shared` | `10` | Minimum shared variants to assess a pair |
+| `--peak-count` | `6` | Flag if non-unity peak has >= N variants (statistically derived; see Flagging thresholds) |
 | `--threads / -t` | `min(8, nCPU)` | Parallel threads |
 | `--include-non-pass` | off | Include non-PASS variants |
 | `--plots` | off | Generate histogram plots for flagged pairs |
