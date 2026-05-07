@@ -48,18 +48,38 @@ rare) and include synonymous, intronic, and coding variants equally. They are
 excellent contamination markers precisely because they are stable, high-depth,
 and well-genotyped.
 
-### Why no population frequency filter
+### Why no population frequency filter (below 0.40)
 
-Traditional somatic reporting filters (gnomAD AF, cohort prevalence, synonymous
-exclusion) are **counterproductive** for contamination detection:
+Traditional somatic reporting filters (gnomAD AF >= 0.002, cohort prevalence,
+synonymous exclusion) are **counterproductive** for contamination detection:
 
 - gnomAD AF >= 0.002 removed 87% of contamination markers in testing
 - Synonymous filter removed 47% of contamination markers
-- These filters exist to identify somatic mutations for clinical reporting;
-  contamination detection is a fundamentally different task
+- Prev_Count_AC filter removed 15% of contamination markers
 
-The tool applies only quality filters (depth and VAF floor) that ensure reliable
-allele fraction estimates.
+Cross-sample contamination consists primarily of the source patient's germline
+heterozygous SNPs leaking into the recipient's library. These variants span the
+full allele frequency spectrum and include synonymous and intronic variants.
+They are excellent contamination markers precisely because they are stable,
+high-depth, and well-genotyped.
+
+### The gnomAD >= 0.40 threshold
+
+The one population-frequency filter retained is **gnomAD AF >= 0.40**. At high
+population frequencies, a substantial proportion of individuals are
+homozygous-alt (AF ~ 1.0) while others are heterozygous (AF ~ 0.5). When these
+two genotypes appear in different samples, the ratio is:
+
+```
+AF_hom / AF_het = 1.0 / 0.5 = 2.0  (log2 = 1.0)
+```
+
+This exactly mimics 50% contamination and produces false positives. Testing
+confirmed that **all** false-positive contamination markers between
+uncontaminated pairs had gnomAD AF > 0.40, while only 1 of 18 genuine
+contamination markers was above this threshold.
+
+The threshold is configurable with `--max-gnomad` (set to 1.0 to disable).
 
 ### Dual-peak detection
 
@@ -94,19 +114,28 @@ The contamination fraction estimate is `2^|peak_log2_ratio|`.
 
 ### Pre-filtering
 
-Only quality filters are applied — no biological/annotation filters:
+The pipeline applies quality filters and a single, targeted population-frequency
+filter:
 
 | Filter | Reason |
 |---|---|
-| PASS only (default) | Removes Sentieon TNfilter soft-failures (strand bias, weak evidence, etc.) |
-| FORMAT/DP >= 99 | Ensures reliable VAF estimation from adequate read depth |
-| AF >= 0.03 | Below this VAF, allele fractions are noisy and unreliable |
+| PASS only (default) | Removes Sentieon TNfilter soft-failures |
+| FORMAT/DP >= 99 | Ensures reliable VAF estimation |
+| AF >= 0.03 | Below this VAF, allele fractions are noisy |
+| gnomAD AF >= 0.40 | Removes hom/het artefact (see above) |
 
-The pipeline is just two bcftools commands:
+The pipeline uses 4 piped bcftools commands:
 ```bash
 bcftools view -f PASS input.vcf.gz -Ou \
-| bcftools filter -e '(FORMAT/DP<99 || AF<0.03)' -Oz -o filtered.vcf.gz
+| bcftools filter -e '(FORMAT/DP<99 || AF<0.03)' -Ou \
+| bcftools +split-vep --columns - -a CSQ -p CSQ_ -s worst -Ou \
+| bcftools view -e 'CSQ_gnomADg_AF>=0.40 || CSQ_gnomADe_AF>=0.40' -Oz -o out.vcf.gz
 ```
+
+The `+split-vep` step extracts CSQ subfields (including gnomAD AF and gene
+SYMBOL) into properly-typed INFO tags, enabling the arithmetic comparison in
+the final step. It uses `-s worst` (single worst-consequence transcript per
+variant) to avoid duplicate records.
 
 ### Flagging thresholds
 
@@ -150,6 +179,7 @@ contamination_screen.py VCF_DIR [options]
 | Option | Default | Description |
 |---|---|---|
 | `--outdir / -o` | `results/` | Output directory |
+| `--max-gnomad` | `0.40` | Exclude variants with gnomAD AF >= this (removes hom/het artefact). Set to 1.0 to disable |
 | `--min-af` | `0.03` | VAF floor for informative variants |
 | `--min-dp` | `99` | Minimum read depth |
 | `--min-shared` | `10` | Minimum informative shared variants to assess |
