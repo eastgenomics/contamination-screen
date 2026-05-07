@@ -99,6 +99,12 @@ def parse_args() -> argparse.Namespace:
              "(requires matplotlib)",
     )
     p.add_argument(
+        "--max-output", type=int, default=10,
+        help="Maximum number of flagged pairs to write detail TSVs and plots "
+             "for, ranked by peak_count (default: %(default)s). "
+             "Set to 0 for no limit.",
+    )
+    p.add_argument(
         "--vcf-glob", default=VCF_GLOB,
         help="Glob pattern for VCF files in vcf_dir (default: %(default)s)",
     )
@@ -706,14 +712,26 @@ def main() -> None:
     flagged = [r for r in raw_results if r["flagged"]]
 
     if flagged:
-        logging.info("Writing details for %d flagged pair(s)...", len(flagged))
+        # Sort by peak_count descending - most suspicious first
+        flagged.sort(key=lambda r: r["peak_count"], reverse=True)
+
+        # Limit detail/plot output to top N
+        if args.max_output > 0:
+            output_pairs = flagged[:args.max_output]
+        else:
+            output_pairs = flagged
+
+        logging.info(
+            "%d pair(s) flagged; writing details for top %d...",
+            len(flagged), len(output_pairs),
+        )
         write_flagged_details(
-            flagged, df_cache, args.outdir,
+            output_pairs, df_cache, args.outdir,
             args.min_af, args.bin_width,
         )
         if args.plots:
             write_plots(
-                flagged, df_cache, args.outdir,
+                output_pairs, df_cache, args.outdir,
                 args.min_af, args.bin_width,
             )
     else:
