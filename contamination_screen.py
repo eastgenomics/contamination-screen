@@ -42,6 +42,9 @@ VCF_GLOB = "*_annotated.vcf.gz"
 
 # CSQ field index for SYMBOL (0-based, from standard Uranus VEP format string)
 _CSQ_SYMBOL_IDX = 1
+# Default gnomAD AF threshold: remove very common variants where hom/het
+# differences between individuals create false 2:1 ratio signals
+_MAX_GNOMAD_AF = 0.40
 
 
 # -- Argument parsing ---------------------------------------------------------
@@ -109,6 +112,13 @@ def parse_args() -> argparse.Namespace:
         help="Glob pattern for VCF files in vcf_dir (default: %(default)s)",
     )
     p.add_argument(
+        "--max-gnomad", type=float, default=_MAX_GNOMAD_AF,
+        help="Exclude variants with gnomAD AF >= this value. Very common "
+             "variants (AF > 0.40) produce false 2:1 ratio signals when one "
+             "sample is hom-alt and the other is het. "
+             "Set to 1.0 to disable. (default: %(default)s)",
+    )
+    p.add_argument(
         "--bin-width", type=float, default=_BIN_WIDTH,
         help="Log2-ratio histogram bin width (default: %(default)s)",
     )
@@ -145,12 +155,11 @@ def get_sample_name(vcf: Path) -> str:
 
 
 def filter_vcf(src: Path, dst: Path, pass_only: bool, min_dp: int,
-               min_af: float) -> None:
+               min_af: float, max_gnomad: float) -> None:
     """
     Apply quality filters for contamination detection.
 
-    Minimal pipeline -- only filters that protect data quality without removing
-    valid contamination markers:
+    Pipeline:
 
       1. bcftools view [-f PASS]
              Optionally restrict to PASS variants (Sentieon TNfilter).
@@ -159,10 +168,16 @@ def filter_vcf(src: Path, dst: Path, pass_only: bool, min_dp: int,
              Remove low-depth and low-VAF variants where allele fractions are
              unreliable.
 
-    No gnomAD, Prev_Count_AC, or synonymous filters are applied. These would
-    remove genuine contamination markers: cross-sample contamination consists
-    primarily of the source patient's germline heterozygous SNPs (which have
-    population-level gnomAD AFs) including synonymous variants.
+      3. bcftools +split-vep --columns - -a CSQ -p CSQ_ -s worst
+             Extract CSQ subfields into CSQ_-prefixed INFO tags (worst
+             transcript only). The .*_AF built-in type rule assigns Float to
+             gnomAD AF fields, enabling arithmetic filtering in the next step.
+
+      4. bcftools view -e 'CSQ_gnomADg_AF>=T || CSQ_gnomADe_AF>=T'
+             Remove very common variants (gnomAD AF >= threshold). At high
+             population frequencies (>0.40), individuals can be homozygous-alt
+             (AF~1.0) or heterozygous (AF~0.5), producing a 2:1 ratio that
+             mimics contamination. This is the only population-frequency filter.
     """
     cmd1 = ["bcftools", "view", str(src)]
     if pass_only:
@@ -172,23 +187,44 @@ def filter_vcf(src: Path, dst: Path, pass_only: bool, min_dp: int,
     cmd2 = [
         "bcftools", "filter",
         "-e", f"(FORMAT/DP<{min_dp} || AF<{min_af})",
-        "-Oz", "-o", str(dst),
+        "-Ou",
     ]
+
+    cmd3 = [
+        "bcftools", "+split-vep",
+        "--columns", "-",
+        "-a", "CSQ",
+        "-p", "CSQ_",
+        "-s", "worst",
+        "-Ou",
+    ]
+
+    cmd4 = ["bcftools", "view"]
+    if max_gnomad < 1.0:
+        cmd4 += ["-e", f"CSQ_gnomADg_AF>={max_gnomad} || CSQ_gnomADe_AF>={max_gnomad}"]
+    cmd4 += ["-Oz", "-o", str(dst)]
 
     logging.debug("Filter pipeline for %s", src.name)
     p1 = subprocess.Popen(cmd1, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     p2 = subprocess.Popen(cmd2, stdin=p1.stdout, stdout=subprocess.PIPE,
                           stderr=subprocess.PIPE)
     p1.stdout.close()
+    p3 = subprocess.Popen(cmd3, stdin=p2.stdout, stdout=subprocess.PIPE,
+                          stderr=subprocess.PIPE)
+    p2.stdout.close()
+    p4 = subprocess.Popen(cmd4, stdin=p3.stdout, stdout=subprocess.PIPE,
+                          stderr=subprocess.PIPE)
+    p3.stdout.close()
 
-    _, p2_err = p2.communicate()
-    p1.wait()
+    _, p4_err = p4.communicate()
+    p1.wait(); p2.wait(); p3.wait()
 
-    for proc, name in [(p1, "view"), (p2, "filter")]:
+    for proc, name in [(p1, "view"), (p2, "filter/DP+AF"),
+                       (p3, "split-vep"), (p4, "view/gnomAD")]:
         if proc.returncode != 0:
             stderr = proc.stderr.read().decode() if proc.stderr else ""
             raise RuntimeError(
-                f"bcftools {name} failed for {src.name}:\n{stderr}\n{p2_err.decode()}"
+                f"bcftools {name} failed for {src.name}:\n{stderr}\n{p4_err.decode()}"
             )
 
     _run(["bcftools", "index", "-t", str(dst)])
@@ -200,24 +236,23 @@ def load_vcf(vcf: Path) -> pd.DataFrame:
     """
     Load a filtered VCF into a DataFrame.
 
-    Extracts CHROM, POS, REF, ALT, FILTER, AF, and the gene SYMBOL from the
-    first transcript in the CSQ annotation.
+    The filtered VCF has CSQ subfields expanded by split-vep into CSQ_-prefixed
+    INFO tags. Gene symbol is read from CSQ_SYMBOL directly.
 
     Returns columns: chrom, pos, ref, alt, filter_col, af, gene
     """
     r = _run([
         "bcftools", "query",
-        "-f", "%CHROM\t%POS\t%REF\t%ALT\t%FILTER\t[%AF]\t%INFO/CSQ\n",
+        "-f", "%CHROM\t%POS\t%REF\t%ALT\t%FILTER\t[%AF]\t%INFO/CSQ_SYMBOL\n",
         str(vcf),
     ], check=False)
 
     if r.returncode != 0:
         stderr = r.stderr.decode()
-        if "INFO/CSQ" in stderr or "not defined" in stderr:
+        if "CSQ" in stderr or "not defined" in stderr:
             logging.error(
-                "Failed to query %s: CSQ field not found. "
-                "This usually means the filtered VCFs were generated by an "
-                "older pipeline version. Re-run with --force-refilter.",
+                "Failed to query %s: CSQ_SYMBOL not found. "
+                "Re-run with --force-refilter to regenerate filtered VCFs.",
                 vcf.name,
             )
         raise RuntimeError(f"bcftools query failed for {vcf.name}: {stderr}")
@@ -230,20 +265,14 @@ def load_vcf(vcf: Path) -> pd.DataFrame:
         if len(parts) < 6:
             continue
         chrom, pos_s, ref, alt, filt, af_s = parts[:6]
-        csq_s = parts[6] if len(parts) > 6 else ""
+        gene = parts[6].strip() if len(parts) > 6 else ""
+        if gene == ".":
+            gene = ""
 
         try:
             af = float(af_s)
         except ValueError:
             continue
-
-        # Parse gene symbol from first CSQ transcript entry
-        gene = ""
-        if csq_s and csq_s != ".":
-            first = csq_s.split(",")[0]
-            csq_parts = first.split("|")
-            if len(csq_parts) > _CSQ_SYMBOL_IDX:
-                gene = csq_parts[_CSQ_SYMBOL_IDX]
 
         rows.append({
             "chrom": chrom, "pos": int(pos_s),
@@ -654,7 +683,8 @@ def main() -> None:
             logging.info("  Filtering: %s", vcf.name)
             try:
                 filter_vcf(vcf, dst, pass_only=not args.include_non_pass,
-                           min_dp=args.min_dp, min_af=args.min_af)
+                           min_dp=args.min_dp, min_af=args.min_af,
+                           max_gnomad=args.max_gnomad)
             except RuntimeError as e:
                 logging.error("Filter failed: %s", e)
                 sys.exit(1)
