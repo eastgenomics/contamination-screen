@@ -354,16 +354,18 @@ def _find_peaks(
 def _compare(
     name_a: str, df_a: pd.DataFrame,
     name_b: str, df_b: pd.DataFrame,
-    min_af: float,
     bin_width: float,
     include_shared_df: bool = False,
 ) -> Tuple[dict, Optional[pd.DataFrame]]:
     """
     Core pairwise comparison with dual-peak detection.
 
-    Merges two variant DataFrames on (chrom, pos, ref, alt), applies the VAF
-    floor, computes log2(AF_B / AF_A), and finds both the overall peak and the
-    non-unity peak (contamination signal).
+    Merges two variant DataFrames on (chrom, pos, ref, alt), computes
+    log2(AF_B / AF_A), and finds both the overall peak and the non-unity
+    peak (contamination signal).
+
+    All variants have already passed the AF floor during pre-filtering,
+    so no additional VAF threshold is applied here.
 
     Directionality (from non-unity peak):
         peak_log2_ratio < 0  =>  AF_A > AF_B  =>  A is the contamination source
@@ -379,13 +381,11 @@ def _compare(
     )
 
     n_shared = len(merged)
-    inf = merged[(merged["af_a"] >= min_af) & (merged["af_b"] >= min_af)].copy()
-    n_inf = len(inf)
 
     nan = float("nan")
     result: dict = {
         "sample_a": name_a, "sample_b": name_b,
-        "n_shared": n_shared, "n_informative": n_inf,
+        "n_shared": n_shared,
         # Overall peak (includes ratio=1 from shared germline)
         "overall_log2": nan, "overall_ratio": nan,
         "overall_count": 0, "overall_fraction": 0.0,
@@ -398,14 +398,15 @@ def _compare(
         "flagged": False,
     }
 
-    if n_inf < 2:
+    if n_shared < 2:
         return result, None
 
-    ratios = (inf["af_b"] / inf["af_a"]).clip(1e-6, 1e6)
-    inf["ratio"] = ratios.values
-    inf["log2_ratio"] = np.log2(ratios.values)
+    merged = merged.copy()
+    ratios = (merged["af_b"] / merged["af_a"]).clip(1e-6, 1e6)
+    merged["ratio"] = ratios.values
+    merged["log2_ratio"] = np.log2(ratios.values)
 
-    peaks = _find_peaks(inf["log2_ratio"].values, bin_width)
+    peaks = _find_peaks(merged["log2_ratio"].values, bin_width)
 
     # Update overall peak
     result.update({
@@ -433,9 +434,9 @@ def _compare(
     plr = peaks["nonunity_log2"]
     if not math.isnan(plr) and peaks["nonunity_count"] > 0:
         half = bin_width / 2.0
-        inf["in_peak"] = (
-            (inf["log2_ratio"] >= plr - half) &
-            (inf["log2_ratio"] <= plr + half)
+        merged["in_peak"] = (
+            (merged["log2_ratio"] >= plr - half) &
+            (merged["log2_ratio"] <= plr + half)
         )
         # Directionality
         if plr < 0:
@@ -451,16 +452,16 @@ def _compare(
                 "contamination_fraction": 2.0 ** (-plr),
             })
     else:
-        inf["in_peak"] = False
+        merged["in_peak"] = False
 
-    return result, (inf if include_shared_df else None)
+    return result, (merged if include_shared_df else None)
 
 
 def _worker(task: tuple) -> dict:
     """Multiprocessing worker. Returns result dict only."""
-    name_a, df_a, name_b, df_b, min_af, bin_width = task
+    name_a, df_a, name_b, df_b, bin_width = task
     result, _ = _compare(name_a, df_a, name_b, df_b,
-                         min_af, bin_width,
+                         bin_width,
                          include_shared_df=False)
     return result
 
@@ -476,7 +477,7 @@ def _apply_flags(
     """Convert results to DataFrame and flag pairs based on NON-UNITY peak."""
     df = pd.DataFrame(results)
     df["flagged"] = (
-        (df["n_informative"] >= min_shared) &
+        (df["n_shared"] >= min_shared) &
         (
             (df["peak_count"] >= peak_count_thresh) |
             (df["peak_fraction"] >= peak_frac_thresh)
@@ -524,7 +525,6 @@ def write_flagged_details(
     flagged: List[dict],
     df_cache: Dict[str, pd.DataFrame],
     outdir: Path,
-    min_af: float,
     bin_width: float,
 ) -> None:
     """Write per-variant detail TSV for each flagged pair."""
@@ -535,7 +535,7 @@ def write_flagged_details(
         na, nb = r["sample_a"], r["sample_b"]
         _, shared = _compare(
             na, df_cache[na], nb, df_cache[nb],
-            min_af, bin_width,
+            bin_width,
             include_shared_df=True,
         )
         if shared is None or shared.empty:
@@ -557,7 +557,6 @@ def write_plots(
     flagged: List[dict],
     df_cache: Dict[str, pd.DataFrame],
     outdir: Path,
-    min_af: float,
     bin_width: float,
 ) -> None:
     """Generate log2-ratio histogram for each flagged pair."""
@@ -578,7 +577,7 @@ def write_plots(
         na, nb = r["sample_a"], r["sample_b"]
         _, shared = _compare(
             na, df_cache[na], nb, df_cache[nb],
-            min_af, bin_width,
+            bin_width,
             include_shared_df=True,
         )
         if shared is None or shared.empty or "log2_ratio" not in shared.columns:
@@ -620,7 +619,7 @@ def write_plots(
         ax.set_ylabel("Variant count")
         ax.set_title(
             f"{na[:45]}  vs  {nb[:45]}\n"
-            f"n_informative = {r['n_informative']}",
+            f"n_shared = {r['n_shared']}",
             fontsize=8,
         )
         ax.legend(fontsize=7, loc="upper left")
@@ -708,7 +707,7 @@ def main() -> None:
 
     tasks = [
         (na, df_cache[na], nb, df_cache[nb],
-         args.min_af, args.bin_width)
+         args.bin_width)
         for na, nb in combinations(sample_names, 2)
     ]
 
@@ -757,12 +756,12 @@ def main() -> None:
         )
         write_flagged_details(
             output_pairs, df_cache, args.outdir,
-            args.min_af, args.bin_width,
+            args.bin_width,
         )
         if args.plots:
             write_plots(
                 output_pairs, df_cache, args.outdir,
-                args.min_af, args.bin_width,
+                args.bin_width,
             )
     else:
         logging.info("No pairs flagged.")
