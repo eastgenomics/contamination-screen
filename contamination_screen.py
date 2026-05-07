@@ -4,44 +4,14 @@ contamination_screen.py
 
 Pairwise cross-sample contamination detector for tumour sequencing panel VCFs.
 
-Design rationale
-----------------
-Cross-sample contamination from an unrelated tumour leaves a characteristic
-fingerprint in variant call data: rare somatic variants from the source sample
-appear in the recipient at a consistent fraction of the source VAF. That fraction
-is the contamination level (e.g. 50% contamination → shared variants appear at
-~half the source VAF in the recipient).
+Screens a cohort of VCFs for cross-sample contamination by detecting shared
+variants at consistent VAF ratios. Uses a dual-peak approach: reports both the
+dominant ratio peak (typically ratio ~1 from shared germline) and the dominant
+non-unity peak (the contamination signal).
 
-This tool detects that signature by:
-
-  1. Pre-filtering each VCF to remove high-frequency population variants and
-     most synonymous variants (retaining GATA2 / TP53 synonymous as clinically
-     relevant markers). This step uses a 4-stage bcftools pipeline to work
-     around the fact that the gnomAD and Prev_Count INFO tags are typed as
-     String in the VCF header: the conflicting tags are stripped, CSQ subfields
-     are expanded into properly typed INFO tags via split-vep, and the resulting
-     VCF is hard-filtered.
-
-  2. Performing every pairwise comparison in the cohort (N*(N-1)/2 pairs).
-
-  3. For each pair, computing log2(VAF_B / VAF_A) for all shared variants with
-     VAF >= min_af in both samples, then scanning the log2-ratio histogram for
-     a cluster of variants at a consistent non-unity ratio — the hallmark of
-     contamination.
-
-  4. Reporting the implied contamination direction and fraction for each flagged
-     pair. A log2-ratio peak at a negative value means sample_a is the source
-     (its variants appear at lower VAF in sample_b); a positive peak means
-     sample_b is the source.
-
-Output files
-------------
-  results/
-  ├── filtered/            Pre-filtered VCFs (reused on re-runs)
-  ├── summary.tsv          One row per pair; flagged pairs marked
-  ├── matrix.tsv           N×N directional matrix [recipient, source] = peak_count
-  ├── flagged_pairs/       Detailed variant table per flagged pair
-  └── plots/               Log2-ratio histograms (--plots only)
+Designed for Uranus pipeline (CUH Bioinformatics) haematological oncology panel
+VCFs output by the eggd_vep stage. Input VCFs must already have been normalised
+with bcftools norm -m -any.
 """
 
 import argparse
@@ -61,73 +31,20 @@ import numpy as np
 import pandas as pd
 
 
-# ── Constants ──────────────────────────────────────────────────────────────────
-
-# The filter pipeline mimics the clinical pipeline exactly:
-#
-#   bcftools norm -m -any
-#     Split multiallelic records and normalise indels.
-#
-#   bcftools +split-vep -c - -p CSQ_ -s worst
-#     Extract ALL CSQ subfields for the worst-consequence transcript into
-#     CSQ_-prefixed INFO tags (e.g. CSQ_SYMBOL, CSQ_gnomADg_AF, ...).
-#     Using the CSQ_ prefix avoids name conflicts with the existing String-typed
-#     INFO tags (gnomADg_AF, Prev_Count_AC, etc.) that were added by the upstream
-#     annotation pipeline — those remain untouched as their original names.
-#
-#   bcftools annotate  (reheader CSQ_Prev_Count_AC String → Integer)
-#     split-vep assigns String to Prev_Count_AC because the field name does not
-#     match the built-in .*_AF Float pattern. A one-line header fix recasts it
-#     so that the arithmetic comparison >853 works in the filter expression.
-#
-#   bcftools filter --soft-filter EXCLUDE -m +
-#     The exact expression from the clinical pipeline. Soft-tags matching
-#     records with FILTER=EXCLUDE (appended to existing FILTER value).
-#
-#   bcftools view [-f PASS] -e 'FILTER~"EXCLUDE"'
-#     Hard-filter: drop EXCLUDE-tagged records. With --include-non-pass omitted
-#     (default), also restrict to records that were originally PASS.
-
-# All CSQ fields extracted by split-vep (- = all fields)
-_SPLIT_VEP_COLS = "-"  # kept for reference; pipeline uses --columns - directly
-
-# Prefix for split-vep INFO tags → CSQ_SYMBOL, CSQ_gnomADg_AF, …
-_VEP_PREFIX = "CSQ_"
-
-# Header line to recast CSQ_Prev_Count_AC from String to Integer
-_PREVCOUNT_HDR = (
-    '##INFO=<ID=CSQ_Prev_Count_AC,Number=1,Type=Integer,'
-    'Description="Cohort prevalence AC (from CSQ)">'
-)
-
-# Soft-filter name written to the FILTER column by bcftools filter
-_SOFT_FILTER_NAME = "EXCLUDE"
-
-# Population / synonymous exclude expression — identical to the clinical pipeline.
-# Applied with bcftools filter --soft-filter EXCLUDE -m + -e '...'
-# Excludes:
-#   - Cohort Prev_Count_AC > 853  (recurrent artefact / common CH)
-#   - gnomAD genome AF >= 0.002
-#   - gnomAD exome AF  >= 0.002
-#   - Synonymous variants, UNLESS gene is GATA2 or TP53
-_EXCLUDE_EXPR = (
-    '(CSQ_Prev_Count_AC>853 || CSQ_gnomADg_AF >= 0.002 || CSQ_gnomADe_AF >= 0.002)'
-    ' || '
-    '(CSQ_SYMBOL!="GATA2" || CSQ_Consequence!="synonymous_variant")'
-    ' && '
-    '(CSQ_SYMBOL!="TP53" || CSQ_Consequence!="synonymous_variant")'
-    ' && '
-    '(CSQ_Consequence=="synonymous_variant")'
-)
+# -- Constants ----------------------------------------------------------------
 
 # Histogram parameters
-_LOG2_RANGE   = 4.0   # ±4 log2 units spans ratios from 1:16 to 16:1
-_BIN_WIDTH    = 0.2   # bin width in log2 units
+_LOG2_RANGE = 4.0   # +/-4 log2 units spans ratios from 1:16 to 16:1
+_BIN_WIDTH  = 0.2   # bin width in log2 units
 
+# Default glob for VCF files
 VCF_GLOB = "*_annotated.vcf.gz"
 
+# CSQ field index for SYMBOL (0-based, from standard Uranus VEP format string)
+_CSQ_SYMBOL_IDX = 1
 
-# ── Argument parsing ────────────────────────────────────────────────────────────
+
+# -- Argument parsing ---------------------------------------------------------
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
@@ -149,18 +66,23 @@ def parse_args() -> argparse.Namespace:
              "(default: %(default)s)",
     )
     p.add_argument(
+        "--min-dp", type=int, default=99,
+        help="Minimum read depth (FORMAT/DP) to retain a variant "
+             "(default: %(default)s)",
+    )
+    p.add_argument(
         "--min-shared", type=int, default=10,
         help="Minimum number of informative shared variants required before "
              "assessing a pair (default: %(default)s)",
     )
     p.add_argument(
         "--peak-count", type=int, default=8,
-        help="Flag a pair if the dominant ratio bin contains >= this many "
+        help="Flag a pair if the non-unity peak contains >= this many "
              "variants (default: %(default)s)",
     )
     p.add_argument(
         "--peak-fraction", type=float, default=0.30,
-        help="Flag a pair if the dominant ratio bin fraction >= this value "
+        help="Flag a pair if the non-unity peak fraction >= this value "
              "(default: %(default)s)",
     )
     p.add_argument(
@@ -186,7 +108,7 @@ def parse_args() -> argparse.Namespace:
     )
     p.add_argument(
         "--force-refilter", action="store_true",
-        help="Re-run bcftools filtering even if filtered VCFs already exist",
+        help="Re-run filtering even if filtered VCFs already exist",
     )
     p.add_argument(
         "--verbose", "-v", action="store_true",
@@ -195,15 +117,13 @@ def parse_args() -> argparse.Namespace:
     return p.parse_args()
 
 
-# ── bcftools helpers ────────────────────────────────────────────────────────────
+# -- bcftools helpers ---------------------------------------------------------
 
-def _run(cmd: List[str], stdin=None, check: bool = True) -> subprocess.CompletedProcess:
+def _run(cmd: List[str], check: bool = True) -> subprocess.CompletedProcess:
     """Run a subprocess, logging the command at DEBUG level."""
     logging.debug("RUN: %s", " ".join(str(c) for c in cmd))
     return subprocess.run(
-        cmd, stdin=stdin,
-        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-        check=check,
+        cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=check,
     )
 
 
@@ -218,160 +138,70 @@ def get_sample_name(vcf: Path) -> str:
     return vcf.stem
 
 
-def get_csq_format(vcf: Path) -> List[str]:
-    """Parse the CSQ Format field order from the VCF INFO header."""
-    r = _run(["bcftools", "view", "-h", str(vcf)])
-    for line in r.stdout.decode().splitlines():
-        if "##INFO=<ID=CSQ" in line:
-            m = re.search(r"Format: ([^\"]+)\"", line)
-            if m:
-                return m.group(1).strip().split("|")
-    return []
-
-
-def filter_vcf(src: Path, dst: Path, pass_only: bool, tmpdir: Path) -> None:
+def filter_vcf(src: Path, dst: Path, pass_only: bool, min_dp: int,
+               min_af: float) -> None:
     """
-    Apply the population-frequency and synonymous-variant filter to src,
-    writing a bgzipped, tabix-indexed VCF to dst.
+    Apply quality filters for contamination detection.
 
-    Pipeline (all steps piped, no intermediate files):
+    Minimal pipeline -- only filters that protect data quality without removing
+    valid contamination markers:
 
-      Note: bcftools norm -m -any has already been applied in the upstream
-      clinical pipeline (confirmed via bcftools_normCommand in the VCF header).
-      Multiallelic records are therefore already split; no norm step is needed.
+      1. bcftools view [-f PASS]
+             Optionally restrict to PASS variants (Sentieon TNfilter).
 
-      1. bcftools +split-vep --columns - -a CSQ -p CSQ_ -d
-             Exact clinical pipeline split-vep command. Extracts ALL CSQ
-             subfields into CSQ_-prefixed INFO tags, outputting one VCF record
-             per transcript (-d/--duplicate). The CSQ_ prefix avoids conflicts
-             with the existing String-typed INFO tags. split-vep's built-in
-             .*_AF type rule assigns Float to CSQ_gnomADg_AF / CSQ_gnomADe_AF.
+      2. bcftools filter -e '(FORMAT/DP < min_dp || AF < min_af)'
+             Remove low-depth and low-VAF variants where allele fractions are
+             unreliable.
 
-      2. bcftools annotate -x INFO/CSQ
-             Remove the original raw CSQ string, which is now redundant now
-             that its subfields have been expanded into CSQ_* INFO tags.
-
-      3. bcftools annotate  (reheader CSQ_Prev_Count_AC String → Integer)
-             CSQ_Prev_Count_AC is assigned String by split-vep (no built-in
-             type rule matches the field name). A one-line header override
-             recasts it to Integer so the >853 arithmetic comparison works.
-
-      4. bcftools filter --soft-filter EXCLUDE -m +
-             Exact clinical pipeline expression. Records matching the exclude
-             criteria have EXCLUDE appended to their FILTER column.
-
-      5. bcftools filter -e '(FORMAT/DP<99 || AF<0.03)'
-             Hard-filter: remove low-depth (DP < 99) and low-VAF (AF < 0.03)
-             variants. Matches the clinical pipeline quality threshold.
-             Note: AF < 0.03 is consistent with --min-af (default 0.03).
-
-      6. bcftools view [-f PASS] -e 'FILTER~"EXCLUDE"'
-             Hard-filter: drop all EXCLUDE-tagged records. In PASS-only mode
-             (-f PASS), also drop any records that were not originally PASS.
-
-      Note on -d duplicates: split-vep -d creates one VCF record per
-      transcript. Most duplicates are removed by the downstream filters
-      (different transcripts have different CSQ_Consequence / CSQ_SYMBOL).
-      Any survivors are deduplicated in load_vcf(), keeping the first
-      record per (CHROM, POS, REF, ALT) which corresponds to VEP's
-      primary/worst-consequence transcript.
+    No gnomAD, Prev_Count_AC, or synonymous filters are applied. These would
+    remove genuine contamination markers: cross-sample contamination consists
+    primarily of the source patient's germline heterozygous SNPs (which have
+    population-level gnomAD AFs) including synonymous variants.
     """
-    hdr_file = tmpdir / "prevcount.hdr"
-    hdr_file.write_text(_PREVCOUNT_HDR + "\n")
-
-    # ── Step 1: split-vep (exact clinical command) ───────────────────────────
-    cmd1 = [
-        "bcftools", "+split-vep", str(src),
-        "--columns", "-",
-        "-a", "CSQ",
-        "-Ou",
-        "-p", _VEP_PREFIX,
-        "-d",
-    ]
-
-    # ── Step 2: remove original CSQ string (now redundant) ───────────────────
-    cmd2 = ["bcftools", "annotate", "-x", "INFO/CSQ", "-Ou"]
-
-    # ── Step 3: reheader CSQ_Prev_Count_AC String → Integer ─────────────────
-    cmd3 = [
-        "bcftools", "annotate",
-        "-x", f"INFO/{_VEP_PREFIX}Prev_Count_AC",
-        "-h", str(hdr_file),
-        "-Ou",
-    ]
-
-    # ── Step 4: soft-filter (exact clinical expression) ─────────────────────
-    cmd4 = [
-        "bcftools", "filter",
-        "--soft-filter", _SOFT_FILTER_NAME,
-        "-m", "+",
-        "-e", _EXCLUDE_EXPR,
-        "-Ou",
-    ]
-
-    # ── Step 5: hard-filter low depth / low VAF ─────────────────────────────
-    cmd5 = [
-        "bcftools", "filter",
-        "-e", "(FORMAT/DP<99 || AF<0.03)",
-        "-Ou",
-    ]
-
-    # ── Step 6: hard-filter EXCLUDE tags (+ optional PASS restriction) ───────
-    cmd6 = ["bcftools", "view", "-e", f'FILTER~"{_SOFT_FILTER_NAME}"']
+    cmd1 = ["bcftools", "view", str(src)]
     if pass_only:
-        cmd6 += ["-f", "PASS"]
-    cmd6 += ["-Oz", "-o", str(dst)]
+        cmd1 += ["-f", "PASS"]
+    cmd1 += ["-Ou"]
+
+    cmd2 = [
+        "bcftools", "filter",
+        "-e", f"(FORMAT/DP<{min_dp} || AF<{min_af})",
+        "-Oz", "-o", str(dst),
+    ]
 
     logging.debug("Filter pipeline for %s", src.name)
     p1 = subprocess.Popen(cmd1, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     p2 = subprocess.Popen(cmd2, stdin=p1.stdout, stdout=subprocess.PIPE,
                           stderr=subprocess.PIPE)
     p1.stdout.close()
-    p3 = subprocess.Popen(cmd3, stdin=p2.stdout, stdout=subprocess.PIPE,
-                          stderr=subprocess.PIPE)
-    p2.stdout.close()
-    p4 = subprocess.Popen(cmd4, stdin=p3.stdout, stdout=subprocess.PIPE,
-                          stderr=subprocess.PIPE)
-    p3.stdout.close()
-    p5 = subprocess.Popen(cmd5, stdin=p4.stdout, stdout=subprocess.PIPE,
-                          stderr=subprocess.PIPE)
-    p4.stdout.close()
-    p6 = subprocess.Popen(cmd6, stdin=p5.stdout, stdout=subprocess.PIPE,
-                          stderr=subprocess.PIPE)
-    p5.stdout.close()
 
-    _, p6_err = p6.communicate()
-    p1.wait(); p2.wait(); p3.wait(); p4.wait(); p5.wait()
+    _, p2_err = p2.communicate()
+    p1.wait()
 
-    for proc, name in [
-        (p1, "split-vep"), (p2, "annotate/-x CSQ"),
-        (p3, "reheader"), (p4, "filter/EXCLUDE"),
-        (p5, "filter/DP+AF"), (p6, "view/hard-filter"),
-    ]:
+    for proc, name in [(p1, "view"), (p2, "filter")]:
         if proc.returncode != 0:
             stderr = proc.stderr.read().decode() if proc.stderr else ""
             raise RuntimeError(
-                f"bcftools {name} failed for {src.name}:\n{stderr}\n{p6_err.decode()}"
+                f"bcftools {name} failed for {src.name}:\n{stderr}\n{p2_err.decode()}"
             )
 
     _run(["bcftools", "index", "-t", str(dst)])
 
 
-# ── VCF loading ─────────────────────────────────────────────────────────────────
+# -- VCF loading --------------------------------------------------------------
 
 def load_vcf(vcf: Path) -> pd.DataFrame:
     """
     Load a filtered VCF into a DataFrame.
 
-    The filtered VCF has already had CSQ subfields extracted by split-vep,
-    so CSQ_SYMBOL is available directly as an INFO tag - no raw CSQ parsing
-    needed.
+    Extracts CHROM, POS, REF, ALT, FILTER, AF, and the gene SYMBOL from the
+    first transcript in the CSQ annotation.
 
     Returns columns: chrom, pos, ref, alt, filter_col, af, gene
     """
     r = _run([
         "bcftools", "query",
-        "-f", "%CHROM\t%POS\t%REF\t%ALT\t%FILTER\t[%AF]\t%INFO/CSQ_SYMBOL\n",
+        "-f", "%CHROM\t%POS\t%REF\t%ALT\t%FILTER\t[%AF]\t%INFO/CSQ\n",
         str(vcf),
     ])
 
@@ -383,14 +213,20 @@ def load_vcf(vcf: Path) -> pd.DataFrame:
         if len(parts) < 6:
             continue
         chrom, pos_s, ref, alt, filt, af_s = parts[:6]
-        gene = parts[6].strip() if len(parts) > 6 else ""
-        if gene == ".":
-            gene = ""
+        csq_s = parts[6] if len(parts) > 6 else ""
 
         try:
             af = float(af_s)
         except ValueError:
             continue
+
+        # Parse gene symbol from first CSQ transcript entry
+        gene = ""
+        if csq_s and csq_s != ".":
+            first = csq_s.split(",")[0]
+            csq_parts = first.split("|")
+            if len(csq_parts) > _CSQ_SYMBOL_IDX:
+                gene = csq_parts[_CSQ_SYMBOL_IDX]
 
         rows.append({
             "chrom": chrom, "pos": int(pos_s),
@@ -403,34 +239,39 @@ def load_vcf(vcf: Path) -> pd.DataFrame:
                                      "filter_col", "af", "gene"])
     df = pd.DataFrame(rows)
     df["pos"] = df["pos"].astype(int)
-    # split-vep -d creates one record per transcript; deduplicate on variant
-    # key, keeping the first occurrence (VEP's primary/worst-consequence
-    # transcript) to ensure each variant appears exactly once per sample.
+    # Deduplicate in case of multi-transcript records
     df = df.drop_duplicates(subset=["chrom", "pos", "ref", "alt"], keep="first")
     return df
 
 
-# ── Core comparison ─────────────────────────────────────────────────────────────
+# -- Core comparison ----------------------------------------------------------
 
-def _find_peak(
+def _find_peaks(
     log2_ratios: np.ndarray,
     bin_width: float,
 ) -> dict:
     """
-    Find the tallest bin in the log2-ratio histogram.
+    Find peaks in the log2-ratio histogram using a dual-peak approach.
 
-    The full histogram range is scanned with no exclusion zone. A peak at
-    log2-ratio = 0 (ratio ~1, similar VAF in both samples) is just as
-    informative as any other peak: it may indicate a sample swap or
-    same-patient samples and should not be suppressed.
+    Returns both the overall tallest peak AND the tallest peak in the non-unity
+    region (|log2_ratio| > 0.3). This separates:
+      - Shared germline variants (ratio ~1, log2 ~0) from
+      - Contamination signal (consistent non-unity ratio)
 
-    Returns:
-        log2_ratio  : centre of the peak bin (nan if no variants)
-        count       : number of variants in that bin
-        fraction    : count / total variants
+    The non-unity peak is used for contamination flagging. The unity peak is
+    reported for completeness (high count = potential swap or relatedness).
+
+    Returns dict with keys:
+        overall_log2, overall_count, overall_fraction
+        nonunity_log2, nonunity_count, nonunity_fraction
     """
+    result = {
+        "overall_log2": float("nan"), "overall_count": 0, "overall_fraction": 0.0,
+        "nonunity_log2": float("nan"), "nonunity_count": 0, "nonunity_fraction": 0.0,
+    }
+
     if len(log2_ratios) == 0:
-        return {"log2_ratio": float("nan"), "count": 0, "fraction": 0.0}
+        return result
 
     edges = np.arange(
         -_LOG2_RANGE - bin_width / 2,
@@ -439,16 +280,29 @@ def _find_peak(
     )
     counts, edges = np.histogram(log2_ratios, bins=edges)
     centers = (edges[:-1] + edges[1:]) / 2.0
+    n_total = len(log2_ratios)
 
     if counts.max() == 0:
-        return {"log2_ratio": float("nan"), "count": 0, "fraction": 0.0}
+        return result
 
-    idx = int(np.argmax(counts))
-    return {
-        "log2_ratio": float(centers[idx]),
-        "count": int(counts[idx]),
-        "fraction": float(counts[idx]) / len(log2_ratios),
-    }
+    # Overall peak (tallest bin across full range)
+    idx_overall = int(np.argmax(counts))
+    result["overall_log2"] = float(centers[idx_overall])
+    result["overall_count"] = int(counts[idx_overall])
+    result["overall_fraction"] = float(counts[idx_overall]) / n_total
+
+    # Non-unity peak (tallest bin where |log2| > 0.3, i.e. ratio outside 0.81-1.23)
+    nonunity_mask = np.abs(centers) > 0.3
+    nonunity_counts = counts.copy()
+    nonunity_counts[~nonunity_mask] = 0
+
+    if nonunity_counts.max() > 0:
+        idx_nonunity = int(np.argmax(nonunity_counts))
+        result["nonunity_log2"] = float(centers[idx_nonunity])
+        result["nonunity_count"] = int(counts[idx_nonunity])
+        result["nonunity_fraction"] = float(counts[idx_nonunity]) / n_total
+
+    return result
 
 
 def _compare(
@@ -459,24 +313,15 @@ def _compare(
     include_shared_df: bool = False,
 ) -> Tuple[dict, Optional[pd.DataFrame]]:
     """
-    Core pairwise comparison.
+    Core pairwise comparison with dual-peak detection.
 
     Merges two variant DataFrames on (chrom, pos, ref, alt), applies the VAF
-    floor, computes log2(AF_B / AF_A) for each shared variant, and identifies
-    the dominant ratio cluster.
+    floor, computes log2(AF_B / AF_A), and finds both the overall peak and the
+    non-unity peak (contamination signal).
 
-    Directionality:
+    Directionality (from non-unity peak):
         peak_log2_ratio < 0  =>  AF_A > AF_B  =>  A is the contamination source
         peak_log2_ratio > 0  =>  AF_B > AF_A  =>  B is the contamination source
-
-    The contamination fraction is the implied fraction of the recipient's
-    library that came from the source: 2^peak_log2_ratio (if source is A) or
-    2^(-peak_log2_ratio) (if source is B).
-
-    Returns:
-        result dict  : statistics for this pair
-        shared_df    : merged DataFrame with ratio columns (None if not requested
-                       or if n_informative < 2)
     """
     merged = pd.merge(
         df_a[["chrom", "pos", "ref", "alt", "filter_col", "af", "gene"]].rename(
@@ -495,8 +340,13 @@ def _compare(
     result: dict = {
         "sample_a": name_a, "sample_b": name_b,
         "n_shared": n_shared, "n_informative": n_inf,
+        # Overall peak (includes ratio=1 from shared germline)
+        "overall_log2": nan, "overall_ratio": nan,
+        "overall_count": 0, "overall_fraction": 0.0,
+        # Non-unity peak (the contamination signal)
         "peak_log2_ratio": nan, "peak_ratio": nan,
         "peak_count": 0, "peak_fraction": 0.0,
+        # Directionality (derived from non-unity peak)
         "contamination_source": "", "contamination_recipient": "",
         "contamination_fraction": nan,
         "flagged": False,
@@ -509,37 +359,50 @@ def _compare(
     inf["ratio"] = ratios.values
     inf["log2_ratio"] = np.log2(ratios.values)
 
-    peak = _find_peak(inf["log2_ratio"].values, bin_width)
+    peaks = _find_peaks(inf["log2_ratio"].values, bin_width)
 
+    # Update overall peak
     result.update({
-        "peak_log2_ratio": peak["log2_ratio"],
-        "peak_ratio": (
-            2.0 ** peak["log2_ratio"]
-            if not math.isnan(peak["log2_ratio"]) else nan
+        "overall_log2": peaks["overall_log2"],
+        "overall_ratio": (
+            2.0 ** peaks["overall_log2"]
+            if not math.isnan(peaks["overall_log2"]) else nan
         ),
-        "peak_count": peak["count"],
-        "peak_fraction": peak["fraction"],
+        "overall_count": peaks["overall_count"],
+        "overall_fraction": peaks["overall_fraction"],
     })
 
-    if not math.isnan(peak["log2_ratio"]) and peak["count"] > 0:
+    # Update non-unity peak (contamination signal)
+    result.update({
+        "peak_log2_ratio": peaks["nonunity_log2"],
+        "peak_ratio": (
+            2.0 ** peaks["nonunity_log2"]
+            if not math.isnan(peaks["nonunity_log2"]) else nan
+        ),
+        "peak_count": peaks["nonunity_count"],
+        "peak_fraction": peaks["nonunity_fraction"],
+    })
+
+    # Mark variants in non-unity peak bin
+    plr = peaks["nonunity_log2"]
+    if not math.isnan(plr) and peaks["nonunity_count"] > 0:
         half = bin_width / 2.0
         inf["in_peak"] = (
-            (inf["log2_ratio"] >= peak["log2_ratio"] - half) &
-            (inf["log2_ratio"] <= peak["log2_ratio"] + half)
+            (inf["log2_ratio"] >= plr - half) &
+            (inf["log2_ratio"] <= plr + half)
         )
-        if peak["log2_ratio"] < 0:
-            # AF_A > AF_B: A's variants appear diluted in B → A is source
+        # Directionality
+        if plr < 0:
             result.update({
                 "contamination_source": name_a,
                 "contamination_recipient": name_b,
-                "contamination_fraction": 2.0 ** peak["log2_ratio"],
+                "contamination_fraction": 2.0 ** plr,
             })
         else:
-            # AF_B > AF_A: B's variants appear diluted in A → B is source
             result.update({
                 "contamination_source": name_b,
                 "contamination_recipient": name_a,
-                "contamination_fraction": 2.0 ** (-peak["log2_ratio"]),
+                "contamination_fraction": 2.0 ** (-plr),
             })
     else:
         inf["in_peak"] = False
@@ -548,11 +411,7 @@ def _compare(
 
 
 def _worker(task: tuple) -> dict:
-    """
-    Multiprocessing worker. Unpacks task tuple and returns the result dict only
-    (no DataFrame). DataFrames for flagged pairs are recomputed in the main
-    process to avoid pickle overhead across all 1128 workers.
-    """
+    """Multiprocessing worker. Returns result dict only."""
     name_a, df_a, name_b, df_b, min_af, bin_width = task
     result, _ = _compare(name_a, df_a, name_b, df_b,
                          min_af, bin_width,
@@ -560,7 +419,7 @@ def _worker(task: tuple) -> dict:
     return result
 
 
-# ── Output writers ──────────────────────────────────────────────────────────────
+# -- Output writers -----------------------------------------------------------
 
 def _apply_flags(
     results: List[dict],
@@ -568,7 +427,7 @@ def _apply_flags(
     peak_count_thresh: int,
     peak_frac_thresh: float,
 ) -> pd.DataFrame:
-    """Convert results list to DataFrame and apply flagging logic."""
+    """Convert results to DataFrame and flag pairs based on NON-UNITY peak."""
     df = pd.DataFrame(results)
     df["flagged"] = (
         (df["n_informative"] >= min_shared) &
@@ -577,9 +436,11 @@ def _apply_flags(
             (df["peak_fraction"] >= peak_frac_thresh)
         )
     )
-    for col in ["peak_log2_ratio", "peak_ratio",
+    for col in ["overall_log2", "overall_ratio", "overall_fraction",
+                "peak_log2_ratio", "peak_ratio",
                 "peak_fraction", "contamination_fraction"]:
-        df[col] = df[col].round(4)
+        if col in df.columns:
+            df[col] = df[col].round(4)
     return df
 
 
@@ -595,14 +456,7 @@ def write_matrix(
     sample_names: List[str],
     outdir: Path,
 ) -> None:
-    """
-    Write a directional N×N contamination matrix.
-
-    Rows = contamination recipient, columns = contamination source.
-    Cell value = peak_count for the (source→recipient) direction.
-    A clean cohort will have a near-zero matrix; contaminated pairs will show
-    non-zero cells in the expected source/recipient positions.
-    """
+    """Write directional N x N contamination matrix (non-unity peak counts)."""
     idx = {name: i for i, name in enumerate(sample_names)}
     n = len(sample_names)
     matrix = np.zeros((n, n), dtype=int)
@@ -627,11 +481,7 @@ def write_flagged_details(
     min_af: float,
     bin_width: float,
 ) -> None:
-    """
-    For each flagged pair, write a TSV of all shared informative variants with
-    their AF_A, AF_B, ratio, log2_ratio, in_peak, gene, and FILTER status.
-    Variants are sorted by log2_ratio so the peak cluster is visible.
-    """
+    """Write per-variant detail TSV for each flagged pair."""
     detail_dir = outdir / "flagged_pairs"
     detail_dir.mkdir(exist_ok=True)
 
@@ -664,13 +514,13 @@ def write_plots(
     min_af: float,
     bin_width: float,
 ) -> None:
-    """Generate a log2-ratio histogram for each flagged pair."""
+    """Generate log2-ratio histogram for each flagged pair."""
     try:
         import matplotlib
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
     except ImportError:
-        logging.warning("matplotlib not available; skipping plots (pip install matplotlib)")
+        logging.warning("matplotlib not available; skipping plots")
         return
 
     plot_dir = outdir / "plots"
@@ -698,22 +548,29 @@ def write_plots(
             ax.text(lr, ax.get_ylim()[1] * 0.92, lbl,
                     ha="center", fontsize=7, color="grey")
 
-        # Peak line
+        # Non-unity peak line (contamination)
         plr = r.get("peak_log2_ratio", float("nan"))
         if not math.isnan(plr):
             src = r.get("contamination_source", "?")[:35]
-            rec = r.get("contamination_recipient", "?")[:35]
             cf = r.get("contamination_fraction", float("nan"))
             ax.axvline(plr, color="crimson", linestyle="--", linewidth=1.8,
                        label=(
-                           f"Peak log₂(r) = {plr:.2f}  (ratio ≈ {2**plr:.3f})\n"
-                           f"Source → {src}\n"
+                           f"Contamination peak: log2 = {plr:.2f} "
+                           f"(ratio = {2**plr:.3f})\n"
+                           f"Source: {src}\n"
                            f"n = {r['peak_count']},  "
                            f"fraction = {r['peak_fraction']:.2f},  "
-                           f"contam ≈ {cf:.1%}"
+                           f"contam ~ {cf:.1%}"
                        ))
 
-        ax.set_xlabel("log₂(VAF_B / VAF_A)")
+        # Overall peak line (likely germline sharing)
+        olr = r.get("overall_log2", float("nan"))
+        if not math.isnan(olr) and abs(olr - (plr if not math.isnan(plr) else 99)) > 0.1:
+            ax.axvline(olr, color="orange", linestyle="-.", linewidth=1.2,
+                       label=f"Overall peak: log2 = {olr:.2f} "
+                             f"(n={r['overall_count']})")
+
+        ax.set_xlabel("log2(VAF_B / VAF_A)")
         ax.set_ylabel("Variant count")
         ax.set_title(
             f"{na[:45]}  vs  {nb[:45]}\n"
@@ -731,7 +588,7 @@ def write_plots(
         logging.info("  Plot: %s", out.name)
 
 
-# ── Main ────────────────────────────────────────────────────────────────────────
+# -- Main --------------------------------------------------------------------
 
 def main() -> None:
     args = parse_args()
@@ -753,115 +610,103 @@ def main() -> None:
 
     n = len(vcf_files)
     n_pairs = n * (n - 1) // 2
-    logging.info(
-        "Found %d VCF files → %d pairwise comparisons", n, n_pairs
-    )
+    logging.info("Found %d VCF files -> %d pairwise comparisons", n, n_pairs)
 
-    # ── Setup ────────────────────────────────────────────────────────────────────
+    # -- Setup ----------------------------------------------------------------
     args.outdir.mkdir(parents=True, exist_ok=True)
     filtered_dir = args.outdir / "filtered"
     filtered_dir.mkdir(exist_ok=True)
 
-    with tempfile.TemporaryDirectory() as tmpdir_s:
-        tmpdir = Path(tmpdir_s)
+    # -- Phase 1: Pre-filter each VCF ----------------------------------------
+    logging.info("Phase 1: Pre-filtering VCFs (%s, DP>=%d, AF>=%.3f)...",
+                 "PASS only" if not args.include_non_pass else "all variants",
+                 args.min_dp, args.min_af)
 
-        # ── Phase 1: Pre-filter each VCF ─────────────────────────────────────────
-        logging.info("Phase 1: Pre-filtering VCFs (%s)...",
-                     "PASS only" if not args.include_non_pass else "all variants")
+    sample_names: List[str] = []
+    filtered_vcfs: Dict[str, Path] = {}
 
-        sample_names: List[str] = []
-        filtered_vcfs: Dict[str, Path] = {}
-        csq_format: List[str] = []
+    for vcf in vcf_files:
+        name = get_sample_name(vcf)
+        sample_names.append(name)
+        dst = filtered_dir / vcf.name
+        tbi = Path(str(dst) + ".tbi")
 
-        for vcf in vcf_files:
-            name = get_sample_name(vcf)
-            sample_names.append(name)
-            dst = filtered_dir / vcf.name
-            tbi = Path(str(dst) + ".tbi")
-
-            if not args.force_refilter and dst.exists() and tbi.exists():
-                logging.info("  Reusing: %s", dst.name)
-            else:
-                logging.info("  Filtering: %s", vcf.name)
-                try:
-                    filter_vcf(vcf, dst, pass_only=not args.include_non_pass,
-                               tmpdir=tmpdir)
-                except RuntimeError as e:
-                    logging.error("Filter failed: %s", e)
-                    sys.exit(1)
-
-            filtered_vcfs[name] = dst
-
-            if not csq_format:
-                csq_format = get_csq_format(vcf)
-                if csq_format:
-                    logging.debug("CSQ format has %d fields", len(csq_format))
-
-        # ── Phase 2: Load filtered VCFs into DataFrames ───────────────────────────
-        logging.info("Phase 2: Loading filtered VCFs...")
-        df_cache: Dict[str, pd.DataFrame] = {}
-
-        for name in sample_names:
-            df = load_vcf(filtered_vcfs[name])
-            df_cache[name] = df
-            logging.info("  %-55s %4d variants", name[:55], len(df))
-
-        # ── Phase 3: Pairwise comparisons ─────────────────────────────────────────
-        logging.info(
-            "Phase 3: %d pairwise comparisons (%d thread%s)...",
-            n_pairs, args.threads, "s" if args.threads != 1 else "",
-        )
-
-        tasks = [
-            (na, df_cache[na], nb, df_cache[nb],
-             args.min_af, args.bin_width)
-            for na, nb in combinations(sample_names, 2)
-        ]
-
-        if args.threads > 1 and n_pairs > 50:
-            with Pool(args.threads) as pool:
-                raw_results = pool.map(_worker, tasks)
+        if not args.force_refilter and dst.exists() and tbi.exists():
+            logging.info("  Reusing: %s", dst.name)
         else:
-            # Sequential for small cohorts — avoids pickle overhead
-            raw_results = [_worker(t) for t in tasks]
+            logging.info("  Filtering: %s", vcf.name)
+            try:
+                filter_vcf(vcf, dst, pass_only=not args.include_non_pass,
+                           min_dp=args.min_dp, min_af=args.min_af)
+            except RuntimeError as e:
+                logging.error("Filter failed: %s", e)
+                sys.exit(1)
 
-        # ── Phase 4: Flag and write outputs ───────────────────────────────────────
-        logging.info("Phase 4: Writing outputs...")
+        filtered_vcfs[name] = dst
 
-        summary_df = _apply_flags(
-            raw_results,
-            min_shared=args.min_shared,
-            peak_count_thresh=args.peak_count,
-            peak_frac_thresh=args.peak_fraction,
+    # -- Phase 2: Load filtered VCFs into DataFrames --------------------------
+    logging.info("Phase 2: Loading filtered VCFs...")
+    df_cache: Dict[str, pd.DataFrame] = {}
+
+    for name in sample_names:
+        df = load_vcf(filtered_vcfs[name])
+        df_cache[name] = df
+        logging.info("  %-55s %4d variants", name[:55], len(df))
+
+    # -- Phase 3: Pairwise comparisons ----------------------------------------
+    logging.info(
+        "Phase 3: %d pairwise comparisons (%d thread%s)...",
+        n_pairs, args.threads, "s" if args.threads != 1 else "",
+    )
+
+    tasks = [
+        (na, df_cache[na], nb, df_cache[nb],
+         args.min_af, args.bin_width)
+        for na, nb in combinations(sample_names, 2)
+    ]
+
+    if args.threads > 1 and n_pairs > 50:
+        with Pool(args.threads) as pool:
+            raw_results = pool.map(_worker, tasks)
+    else:
+        raw_results = [_worker(t) for t in tasks]
+
+    # -- Phase 4: Flag and write outputs --------------------------------------
+    logging.info("Phase 4: Writing outputs...")
+
+    summary_df = _apply_flags(
+        raw_results,
+        min_shared=args.min_shared,
+        peak_count_thresh=args.peak_count,
+        peak_frac_thresh=args.peak_fraction,
+    )
+    write_summary(summary_df, args.outdir)
+    write_matrix(raw_results, sample_names, args.outdir)
+
+    flagged_keys = set(
+        zip(
+            summary_df.loc[summary_df["flagged"], "sample_a"],
+            summary_df.loc[summary_df["flagged"], "sample_b"],
         )
-        write_summary(summary_df, args.outdir)
-        write_matrix(raw_results, sample_names, args.outdir)
+    )
+    for r in raw_results:
+        r["flagged"] = (r["sample_a"], r["sample_b"]) in flagged_keys
 
-        # Re-sync flagged status into raw_results for detail/plot writers
-        flagged_keys = set(
-            zip(
-                summary_df.loc[summary_df["flagged"], "sample_a"],
-                summary_df.loc[summary_df["flagged"], "sample_b"],
-            )
+    flagged = [r for r in raw_results if r["flagged"]]
+
+    if flagged:
+        logging.info("Writing details for %d flagged pair(s)...", len(flagged))
+        write_flagged_details(
+            flagged, df_cache, args.outdir,
+            args.min_af, args.bin_width,
         )
-        for r in raw_results:
-            r["flagged"] = (r["sample_a"], r["sample_b"]) in flagged_keys
-
-        flagged = [r for r in raw_results if r["flagged"]]
-
-        if flagged:
-            logging.info("Writing details for %d flagged pair(s)...", len(flagged))
-            write_flagged_details(
+        if args.plots:
+            write_plots(
                 flagged, df_cache, args.outdir,
                 args.min_af, args.bin_width,
             )
-            if args.plots:
-                write_plots(
-                    flagged, df_cache, args.outdir,
-                    args.min_af, args.bin_width,
-                )
-        else:
-            logging.info("No pairs flagged.")
+    else:
+        logging.info("No pairs flagged.")
 
     logging.info("Done. Results in %s/", args.outdir)
 
