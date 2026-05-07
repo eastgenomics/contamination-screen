@@ -48,11 +48,14 @@ Before comparison, each VCF is filtered to remove variants that would add noise:
 
 This filtering requires a 4-step bcftools pipeline. `bcftools norm -m -any` has already been applied in the upstream clinical pipeline (confirmed via `bcftools_normCommand` in the VCF header), so no normalisation step is needed here. The pipeline:
 
-1. `bcftools +split-vep -c - -p CSQ_ -s worst` — extracts all CSQ subfields for the worst-consequence transcript into `CSQ_`-prefixed INFO tags (`CSQ_SYMBOL`, `CSQ_Consequence`, `CSQ_gnomADe_AF`, `CSQ_gnomADg_AF`, `CSQ_Prev_Count_AC`, …). The `CSQ_` prefix avoids conflicts with the existing `gnomADg_AF`, `Prev_Count_AC`, etc. INFO tags which are typed as `String` in the VCF header. split-vep's built-in `.*_AF` type rule automatically assigns `Float` to the gnomAD fields.
-2. `bcftools annotate -h` — recasts `CSQ_Prev_Count_AC` from `String` to `Integer` (split-vep's built-in type rules do not match `Prev_Count_AC`, so it defaults to String; arithmetic comparison `>853` requires Integer).
-3. `bcftools filter --soft-filter EXCLUDE -m +` — the **exact expression from the clinical pipeline**, soft-tagging matching records with `FILTER=EXCLUDE`.
-4. `bcftools filter -e '(FORMAT/DP<99 || AF<0.03)'` — hard-removes low-depth (DP < 99) and low-VAF (AF < 0.03) variants, matching the clinical quality threshold.
-5. `bcftools view [-f PASS] -e 'FILTER~"EXCLUDE"'` — hard-filters by dropping `EXCLUDE`-tagged records; optionally restricts to originally-PASS records.
+1. `bcftools +split-vep --columns - -a CSQ -p CSQ_ -d` — the **exact clinical pipeline split-vep command**. Extracts all CSQ subfields into `CSQ_`-prefixed INFO tags, outputting one record per transcript (`-d`). The `CSQ_` prefix avoids conflicts with the existing String-typed INFO tags.
+2. `bcftools annotate -x INFO/CSQ` — removes the now-redundant raw CSQ string.
+3. `bcftools annotate -h` — recasts `CSQ_Prev_Count_AC` from `String` to `Integer` (split-vep's built-in type rules do not match `Prev_Count_AC`, so it defaults to String; arithmetic comparison `>853` requires Integer).
+4. `bcftools filter --soft-filter EXCLUDE -m +` — the **exact expression from the clinical pipeline**, soft-tagging matching records with `FILTER=EXCLUDE`.
+5. `bcftools filter -e '(FORMAT/DP<99 || AF<0.03)'` — hard-filters low-depth (DP < 99) and low-VAF (AF < 0.03) variants.
+6. `bcftools view [-f PASS] -e 'FILTER~"EXCLUDE"'` — hard-filters by dropping `EXCLUDE`-tagged records; optionally restricts to originally-PASS records.
+
+Because split-vep `-d` creates one VCF record per transcript, the same variant may appear multiple times. Most duplicates are removed by the downstream filters (different transcripts have different `CSQ_Consequence` and `CSQ_SYMBOL`). Any survivors are deduplicated in memory when loading, keeping the first occurrence (VEP's primary/worst-consequence transcript).
 
 Filtered VCFs are written to `results/filtered/` and reused on re-runs. Use `--force-refilter` to regenerate them (e.g. after changing `--include-non-pass`).
 

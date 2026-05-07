@@ -89,7 +89,7 @@ import pandas as pd
 #     (default), also restrict to records that were originally PASS.
 
 # All CSQ fields extracted by split-vep (- = all fields)
-_SPLIT_VEP_COLS = "-"
+_SPLIT_VEP_COLS = "-"  # kept for reference; pipeline uses --columns - directly
 
 # Prefix for split-vep INFO tags → CSQ_SYMBOL, CSQ_gnomADg_AF, …
 _VEP_PREFIX = "CSQ_"
@@ -248,56 +248,68 @@ def filter_vcf(src: Path, dst: Path, pass_only: bool, tmpdir: Path) -> None:
       clinical pipeline (confirmed via bcftools_normCommand in the VCF header).
       Multiallelic records are therefore already split; no norm step is needed.
 
-      1. bcftools +split-vep -c - -p CSQ_ -s worst
-             Extract ALL CSQ subfields for the worst-consequence transcript into
-             CSQ_-prefixed INFO tags (CSQ_SYMBOL, CSQ_Consequence,
-             CSQ_gnomADe_AF, CSQ_gnomADg_AF, CSQ_Prev_Count_AC, …).
-             The CSQ_ prefix avoids name conflicts with the existing String-typed
-             INFO tags (gnomADg_AF, Prev_Count_AC, etc.) added by the upstream
-             annotation pipeline — those remain untouched under their original
-             names. The .*_AF pattern in split-vep's built-in type rules
-             automatically assigns Float to CSQ_gnomADg_AF and CSQ_gnomADe_AF.
+      1. bcftools +split-vep --columns - -a CSQ -p CSQ_ -d
+             Exact clinical pipeline split-vep command. Extracts ALL CSQ
+             subfields into CSQ_-prefixed INFO tags, outputting one VCF record
+             per transcript (-d/--duplicate). The CSQ_ prefix avoids conflicts
+             with the existing String-typed INFO tags. split-vep's built-in
+             .*_AF type rule assigns Float to CSQ_gnomADg_AF / CSQ_gnomADe_AF.
 
-      2. bcftools annotate  (reheader CSQ_Prev_Count_AC String → Integer)
+      2. bcftools annotate -x INFO/CSQ
+             Remove the original raw CSQ string, which is now redundant now
+             that its subfields have been expanded into CSQ_* INFO tags.
+
+      3. bcftools annotate  (reheader CSQ_Prev_Count_AC String → Integer)
              CSQ_Prev_Count_AC is assigned String by split-vep (no built-in
              type rule matches the field name). A one-line header override
              recasts it to Integer so the >853 arithmetic comparison works.
 
-      3. bcftools filter --soft-filter EXCLUDE -m +
+      4. bcftools filter --soft-filter EXCLUDE -m +
              Exact clinical pipeline expression. Records matching the exclude
              criteria have EXCLUDE appended to their FILTER column.
 
-      4. bcftools filter -e '(FORMAT/DP<99 || AF<0.03)'
+      5. bcftools filter -e '(FORMAT/DP<99 || AF<0.03)'
              Hard-filter: remove low-depth (DP < 99) and low-VAF (AF < 0.03)
              variants. Matches the clinical pipeline quality threshold.
              Note: AF < 0.03 is consistent with --min-af (default 0.03).
 
-      5. bcftools view [-f PASS] -e 'FILTER~"EXCLUDE"'
+      6. bcftools view [-f PASS] -e 'FILTER~"EXCLUDE"'
              Hard-filter: drop all EXCLUDE-tagged records. In PASS-only mode
              (-f PASS), also drop any records that were not originally PASS.
+
+      Note on -d duplicates: split-vep -d creates one VCF record per
+      transcript. Most duplicates are removed by the downstream filters
+      (different transcripts have different CSQ_Consequence / CSQ_SYMBOL).
+      Any survivors are deduplicated in load_vcf(), keeping the first
+      record per (CHROM, POS, REF, ALT) which corresponds to VEP's
+      primary/worst-consequence transcript.
     """
     hdr_file = tmpdir / "prevcount.hdr"
     hdr_file.write_text(_PREVCOUNT_HDR + "\n")
 
-    # ── Step 1: split-vep ────────────────────────────────────────────────────
+    # ── Step 1: split-vep (exact clinical command) ───────────────────────────
     cmd1 = [
         "bcftools", "+split-vep", str(src),
-        "-c", _SPLIT_VEP_COLS,
-        "-s", "worst",
-        "-p", _VEP_PREFIX,
+        "--columns", "-",
+        "-a", "CSQ",
         "-Ou",
+        "-p", _VEP_PREFIX,
+        "-d",
     ]
 
-    # ── Step 2: reheader CSQ_Prev_Count_AC String → Integer ──────────────────
-    cmd2 = [
+    # ── Step 2: remove original CSQ string (now redundant) ───────────────────
+    cmd2 = ["bcftools", "annotate", "-x", "INFO/CSQ", "-Ou"]
+
+    # ── Step 3: reheader CSQ_Prev_Count_AC String → Integer ─────────────────
+    cmd3 = [
         "bcftools", "annotate",
         "-x", f"INFO/{_VEP_PREFIX}Prev_Count_AC",
         "-h", str(hdr_file),
         "-Ou",
     ]
 
-    # ── Step 3: soft-filter (exact clinical expression) ──────────────────────
-    cmd3 = [
+    # ── Step 4: soft-filter (exact clinical expression) ─────────────────────
+    cmd4 = [
         "bcftools", "filter",
         "--soft-filter", _SOFT_FILTER_NAME,
         "-m", "+",
@@ -305,18 +317,18 @@ def filter_vcf(src: Path, dst: Path, pass_only: bool, tmpdir: Path) -> None:
         "-Ou",
     ]
 
-    # ── Step 4: hard-filter low depth / low VAF ───────────────────────────────
-    cmd4 = [
+    # ── Step 5: hard-filter low depth / low VAF ─────────────────────────────
+    cmd5 = [
         "bcftools", "filter",
         "-e", "(FORMAT/DP<99 || AF<0.03)",
         "-Ou",
     ]
 
-    # ── Step 5: hard-filter EXCLUDE tags (+ optional PASS restriction) ────────
-    cmd5 = ["bcftools", "view", "-e", f'FILTER~"{_SOFT_FILTER_NAME}"']
+    # ── Step 6: hard-filter EXCLUDE tags (+ optional PASS restriction) ───────
+    cmd6 = ["bcftools", "view", "-e", f'FILTER~"{_SOFT_FILTER_NAME}"']
     if pass_only:
-        cmd5 += ["-f", "PASS"]
-    cmd5 += ["-Oz", "-o", str(dst)]
+        cmd6 += ["-f", "PASS"]
+    cmd6 += ["-Oz", "-o", str(dst)]
 
     logging.debug("Filter pipeline for %s", src.name)
     p1 = subprocess.Popen(cmd1, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -332,18 +344,22 @@ def filter_vcf(src: Path, dst: Path, pass_only: bool, tmpdir: Path) -> None:
     p5 = subprocess.Popen(cmd5, stdin=p4.stdout, stdout=subprocess.PIPE,
                           stderr=subprocess.PIPE)
     p4.stdout.close()
+    p6 = subprocess.Popen(cmd6, stdin=p5.stdout, stdout=subprocess.PIPE,
+                          stderr=subprocess.PIPE)
+    p5.stdout.close()
 
-    _, p5_err = p5.communicate()
-    p1.wait(); p2.wait(); p3.wait(); p4.wait()
+    _, p6_err = p6.communicate()
+    p1.wait(); p2.wait(); p3.wait(); p4.wait(); p5.wait()
 
     for proc, name in [
-        (p1, "split-vep"), (p2, "reheader"),
-        (p3, "filter/EXCLUDE"), (p4, "filter/DP+AF"), (p5, "view/hard-filter"),
+        (p1, "split-vep"), (p2, "annotate/-x CSQ"),
+        (p3, "reheader"), (p4, "filter/EXCLUDE"),
+        (p5, "filter/DP+AF"), (p6, "view/hard-filter"),
     ]:
         if proc.returncode != 0:
             stderr = proc.stderr.read().decode() if proc.stderr else ""
             raise RuntimeError(
-                f"bcftools {name} failed for {src.name}:\n{stderr}\n{p5_err.decode()}"
+                f"bcftools {name} failed for {src.name}:\n{stderr}\n{p6_err.decode()}"
             )
 
     _run(["bcftools", "index", "-t", str(dst)])
@@ -356,7 +372,7 @@ def load_vcf(vcf: Path) -> pd.DataFrame:
     Load a filtered VCF into a DataFrame.
 
     The filtered VCF has already had CSQ subfields extracted by split-vep,
-    so CSQ_SYMBOL is available directly as an INFO tag — no raw CSQ parsing
+    so CSQ_SYMBOL is available directly as an INFO tag - no raw CSQ parsing
     needed.
 
     Returns columns: chrom, pos, ref, alt, filter_col, af, gene
@@ -395,6 +411,10 @@ def load_vcf(vcf: Path) -> pd.DataFrame:
                                      "filter_col", "af", "gene"])
     df = pd.DataFrame(rows)
     df["pos"] = df["pos"].astype(int)
+    # split-vep -d creates one record per transcript; deduplicate on variant
+    # key, keeping the first occurrence (VEP's primary/worst-consequence
+    # transcript) to ensure each variant appears exactly once per sample.
+    df = df.drop_duplicates(subset=["chrom", "pos", "ref", "alt"], keep="first")
     return df
 
 
@@ -460,8 +480,8 @@ def _compare(
     the dominant ratio cluster.
 
     Directionality:
-        peak_log2_ratio < 0  →  AF_A > AF_B  →  A is the contamination source
-        peak_log2_ratio > 0  →  AF_B > AF_A  →  B is the contamination source
+        peak_log2_ratio < 0  =>  AF_A > AF_B  =>  A is the contamination source
+        peak_log2_ratio > 0  =>  AF_B > AF_A  =>  B is the contamination source
 
     The contamination fraction is the implied fraction of the recipient's
     library that came from the source: 2^peak_log2_ratio (if source is A) or
