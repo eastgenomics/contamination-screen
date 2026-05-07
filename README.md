@@ -46,12 +46,12 @@ Before comparison, each VCF is filtered to remove variants that would add noise:
 | Synonymous variants | Non-functional, not specifically somatic |
 | *Exception: GATA2 and TP53 synonymous variants are retained* | Clinically relevant markers |
 
-This filtering requires a 4-step bcftools pipeline because the gnomAD and cohort prevalence fields are typed as `String` in the VCF header (set by the upstream annotation pipeline), which prevents arithmetic comparison in `bcftools filter` or `bcftools view` expressions. The pipeline:
+This filtering requires a 4-step bcftools pipeline. `bcftools norm -m -any` has already been applied in the upstream clinical pipeline (confirmed via `bcftools_normCommand` in the VCF header), so no normalisation step is needed here. The pipeline:
 
-1. `bcftools annotate -x` — strips the String-typed INFO tags to expose the CSQ subfields
-2. `bcftools +split-vep` — extracts the relevant CSQ subfields (SYMBOL, Consequence, gnomADe_AF, gnomADg_AF, Prev_Count_AC) into properly typed INFO tags using the worst-transcript annotation
-3. `bcftools annotate -h` — recasts `vepPrev_Count_AC` from String to Integer (split-vep's built-in type rules match `.*_AF` to Float but not `Prev_Count_AC`)
-4. `bcftools view -e` — hard-filters using the numeric expression
+1. `bcftools +split-vep -c - -p CSQ_ -s worst` — extracts all CSQ subfields for the worst-consequence transcript into `CSQ_`-prefixed INFO tags (`CSQ_SYMBOL`, `CSQ_Consequence`, `CSQ_gnomADe_AF`, `CSQ_gnomADg_AF`, `CSQ_Prev_Count_AC`, …). The `CSQ_` prefix avoids conflicts with the existing `gnomADg_AF`, `Prev_Count_AC`, etc. INFO tags which are typed as `String` in the VCF header. split-vep's built-in `.*_AF` type rule automatically assigns `Float` to the gnomAD fields.
+2. `bcftools annotate -h` — recasts `CSQ_Prev_Count_AC` from `String` to `Integer` (split-vep's built-in type rules do not match `Prev_Count_AC`, so it defaults to String; arithmetic comparison `>853` requires Integer).
+3. `bcftools filter --soft-filter EXCLUDE -m +` — the **exact expression from the clinical pipeline**, soft-tagging matching records with `FILTER=EXCLUDE`.
+4. `bcftools view [-f PASS] -e 'FILTER~"EXCLUDE"'` — hard-filters by dropping `EXCLUDE`-tagged records; optionally restricts to originally-PASS records.
 
 Filtered VCFs are written to `results/filtered/` and reused on re-runs. Use `--force-refilter` to regenerate them (e.g. after changing `--include-non-pass`).
 

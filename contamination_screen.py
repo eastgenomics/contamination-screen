@@ -63,44 +63,61 @@ import pandas as pd
 
 # ── Constants ──────────────────────────────────────────────────────────────────
 
-# INFO tags that must be stripped before split-vep can extract their CSQ
-# counterparts with correct numeric types. These are annotated as Type=String
-# in the VCF header by the upstream pipeline, which prevents bcftools from
-# doing arithmetic comparisons on them. split-vep will re-add them with the
-# correct types derived from the CSQ Format string.
-_STRIP_TAGS = ",".join([
-    "INFO/gnomADe", "INFO/gnomADe_AC", "INFO/gnomADe_AN", "INFO/gnomADe_AF",
-    "INFO/gnomADg", "INFO/gnomADg_AC", "INFO/gnomADg_AN", "INFO/gnomADg_AF",
-    "INFO/Prev_Count", "INFO/Prev_Count_AC", "INFO/Prev_Count_NS",
-    "INFO/RESCUE_LIST", "INFO/SYMBOL",
-])
+# The filter pipeline mimics the clinical pipeline exactly:
+#
+#   bcftools norm -m -any
+#     Split multiallelic records and normalise indels.
+#
+#   bcftools +split-vep -c - -p CSQ_ -s worst
+#     Extract ALL CSQ subfields for the worst-consequence transcript into
+#     CSQ_-prefixed INFO tags (e.g. CSQ_SYMBOL, CSQ_gnomADg_AF, ...).
+#     Using the CSQ_ prefix avoids name conflicts with the existing String-typed
+#     INFO tags (gnomADg_AF, Prev_Count_AC, etc.) that were added by the upstream
+#     annotation pipeline — those remain untouched as their original names.
+#
+#   bcftools annotate  (reheader CSQ_Prev_Count_AC String → Integer)
+#     split-vep assigns String to Prev_Count_AC because the field name does not
+#     match the built-in .*_AF Float pattern. A one-line header fix recasts it
+#     so that the arithmetic comparison >853 works in the filter expression.
+#
+#   bcftools filter --soft-filter EXCLUDE -m +
+#     The exact expression from the clinical pipeline. Soft-tags matching
+#     records with FILTER=EXCLUDE (appended to existing FILTER value).
+#
+#   bcftools view [-f PASS] -e 'FILTER~"EXCLUDE"'
+#     Hard-filter: drop EXCLUDE-tagged records. With --include-non-pass omitted
+#     (default), also restrict to records that were originally PASS.
 
-# CSQ subfield indices to extract (0-based, from Format string):
-#   1=SYMBOL, 2=Consequence, 24=gnomADe_AF, 27=gnomADg_AF, 31=Prev_Count_AC
-_SPLIT_VEP_COLS = "1-2,24,27,31"
+# All CSQ fields extracted by split-vep (- = all fields)
+_SPLIT_VEP_COLS = "-"
 
-# Prefix for split-vep INFO tags (e.g. vepSYMBOL, vepgnomADg_AF, ...)
-_VEP_PREFIX = "vep"
+# Prefix for split-vep INFO tags → CSQ_SYMBOL, CSQ_gnomADg_AF, …
+_VEP_PREFIX = "CSQ_"
 
-# Header line used to recast vepPrev_Count_AC from String to Integer after
-# split-vep (the .*_AF regex in split-vep's default types handles the AFs,
-# but Prev_Count_AC has no matching pattern).
+# Header line to recast CSQ_Prev_Count_AC from String to Integer
 _PREVCOUNT_HDR = (
-    '##INFO=<ID=vepPrev_Count_AC,Number=1,Type=Integer,'
-    'Description="Cohort prevalence AC from CSQ">'
+    '##INFO=<ID=CSQ_Prev_Count_AC,Number=1,Type=Integer,'
+    'Description="Cohort prevalence AC (from CSQ)">'
 )
 
-# Population / synonymous exclude expression (used with bcftools view -e).
-# Excludes variants where:
-#   - Cohort Prev_Count_AC > 853  (highly recurrent, likely artefact or common CH)
+# Soft-filter name written to the FILTER column by bcftools filter
+_SOFT_FILTER_NAME = "EXCLUDE"
+
+# Population / synonymous exclude expression — identical to the clinical pipeline.
+# Applied with bcftools filter --soft-filter EXCLUDE -m + -e '...'
+# Excludes:
+#   - Cohort Prev_Count_AC > 853  (recurrent artefact / common CH)
 #   - gnomAD genome AF >= 0.002
 #   - gnomAD exome AF  >= 0.002
-#   - Consequence is synonymous, UNLESS the gene is GATA2 or TP53
+#   - Synonymous variants, UNLESS gene is GATA2 or TP53
 _EXCLUDE_EXPR = (
-    '(vepPrev_Count_AC>853 || vepgnomADg_AF >= 0.002 || vepgnomADe_AF >= 0.002)'
+    '(CSQ_Prev_Count_AC>853 || CSQ_gnomADg_AF >= 0.002 || CSQ_gnomADe_AF >= 0.002)'
     ' || '
-    '(vepConsequence=="synonymous_variant"'
-    ' && vepSYMBOL!="GATA2" && vepSYMBOL!="TP53")'
+    '(CSQ_SYMBOL!="GATA2" || CSQ_Consequence!="synonymous_variant")'
+    ' && '
+    '(CSQ_SYMBOL!="TP53" || CSQ_Consequence!="synonymous_variant")'
+    ' && '
+    '(CSQ_Consequence=="synonymous_variant")'
 )
 
 # Histogram parameters
@@ -226,42 +243,68 @@ def filter_vcf(src: Path, dst: Path, pass_only: bool, tmpdir: Path) -> None:
     writing a bgzipped, tabix-indexed VCF to dst.
 
     Pipeline (all steps piped, no intermediate files):
-      1. bcftools annotate -x   Strip String-typed INFO tags that conflict with
-                                 the CSQ subfields we need to extract numerically.
-      2. bcftools +split-vep    Expand CSQ subfields for worst transcript into
-                                 typed INFO tags (vepSYMBOL, vepConsequence,
-                                 vepgnomADe_AF, vepgnomADg_AF, vepPrev_Count_AC).
-      3. bcftools annotate      Recast vepPrev_Count_AC from String to Integer
-                                 (split-vep assigns String because the field name
-                                 doesn't match the built-in .*_AF Float pattern).
-      4. bcftools view          Hard-filter: optionally -f PASS, then exclude
-                                 high-population-frequency and synonymous variants.
+
+      Note: bcftools norm -m -any has already been applied in the upstream
+      clinical pipeline (confirmed via bcftools_normCommand in the VCF header).
+      Multiallelic records are therefore already split; no norm step is needed.
+
+      1. bcftools +split-vep -c - -p CSQ_ -s worst
+             Extract ALL CSQ subfields for the worst-consequence transcript into
+             CSQ_-prefixed INFO tags (CSQ_SYMBOL, CSQ_Consequence,
+             CSQ_gnomADe_AF, CSQ_gnomADg_AF, CSQ_Prev_Count_AC, …).
+             The CSQ_ prefix avoids name conflicts with the existing String-typed
+             INFO tags (gnomADg_AF, Prev_Count_AC, etc.) added by the upstream
+             annotation pipeline — those remain untouched under their original
+             names. The .*_AF pattern in split-vep's built-in type rules
+             automatically assigns Float to CSQ_gnomADg_AF and CSQ_gnomADe_AF.
+
+      2. bcftools annotate  (reheader CSQ_Prev_Count_AC String → Integer)
+             CSQ_Prev_Count_AC is assigned String by split-vep (no built-in
+             type rule matches the field name). A one-line header override
+             recasts it to Integer so the >853 arithmetic comparison works.
+
+      3. bcftools filter --soft-filter EXCLUDE -m +
+             Exact clinical pipeline expression. Records matching the exclude
+             criteria have EXCLUDE appended to their FILTER column.
+
+      4. bcftools view [-f PASS] -e 'FILTER~"EXCLUDE"'
+             Hard-filter: drop all EXCLUDE-tagged records. In PASS-only mode
+             (-f PASS), also drop any records that were not originally PASS.
     """
-    # Write the Prev_Count_AC reheader file into the temp dir
     hdr_file = tmpdir / "prevcount.hdr"
     hdr_file.write_text(_PREVCOUNT_HDR + "\n")
 
-    # Build the four-stage pipeline as Popen objects connected by pipes
+    # ── Step 1: split-vep ────────────────────────────────────────────────────
     cmd1 = [
-        "bcftools", "annotate", "-x", _STRIP_TAGS, str(src), "-Ou",
-    ]
-    cmd2 = [
-        "bcftools", "+split-vep",
+        "bcftools", "+split-vep", str(src),
         "-c", _SPLIT_VEP_COLS,
         "-s", "worst",
         "-p", _VEP_PREFIX,
         "-Ou",
     ]
-    cmd3 = [
+
+    # ── Step 2: reheader CSQ_Prev_Count_AC String → Integer ──────────────────
+    cmd2 = [
         "bcftools", "annotate",
         "-x", f"INFO/{_VEP_PREFIX}Prev_Count_AC",
         "-h", str(hdr_file),
         "-Ou",
     ]
-    cmd4 = ["bcftools", "view"]
+
+    # ── Step 3: soft-filter (exact clinical expression) ──────────────────────
+    cmd3 = [
+        "bcftools", "filter",
+        "--soft-filter", _SOFT_FILTER_NAME,
+        "-m", "+",
+        "-e", _EXCLUDE_EXPR,
+        "-Ou",
+    ]
+
+    # ── Step 4: hard-filter ──────────────────────────────────────────────────
+    cmd4 = ["bcftools", "view", "-e", f'FILTER~"{_SOFT_FILTER_NAME}"']
     if pass_only:
         cmd4 += ["-f", "PASS"]
-    cmd4 += ["-e", _EXCLUDE_EXPR, "-Oz", "-o", str(dst)]
+    cmd4 += ["-Oz", "-o", str(dst)]
 
     logging.debug("Filter pipeline for %s", src.name)
     p1 = subprocess.Popen(cmd1, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -278,37 +321,36 @@ def filter_vcf(src: Path, dst: Path, pass_only: bool, tmpdir: Path) -> None:
     _, p4_err = p4.communicate()
     p1.wait(); p2.wait(); p3.wait()
 
-    for proc, name in [(p1, "annotate"), (p2, "split-vep"),
-                       (p3, "reheader"), (p4, "view/filter")]:
+    for proc, name in [
+        (p1, "split-vep"), (p2, "reheader"),
+        (p3, "filter"), (p4, "view/hard-filter"),
+    ]:
         if proc.returncode != 0:
             stderr = proc.stderr.read().decode() if proc.stderr else ""
             raise RuntimeError(
                 f"bcftools {name} failed for {src.name}:\n{stderr}\n{p4_err.decode()}"
             )
 
-    # Index the output
     _run(["bcftools", "index", "-t", str(dst)])
 
 
 # ── VCF loading ─────────────────────────────────────────────────────────────────
 
-def load_vcf(vcf: Path, csq_fields: List[str]) -> pd.DataFrame:
+def load_vcf(vcf: Path) -> pd.DataFrame:
     """
     Load a filtered VCF into a DataFrame.
 
-    Uses bcftools query to extract: CHROM, POS, REF, ALT, FILTER, AF, and the
-    raw CSQ string. The SYMBOL gene name is parsed from the first CSQ transcript
-    entry.
+    The filtered VCF has already had CSQ subfields extracted by split-vep,
+    so CSQ_SYMBOL is available directly as an INFO tag — no raw CSQ parsing
+    needed.
 
     Returns columns: chrom, pos, ref, alt, filter_col, af, gene
     """
     r = _run([
         "bcftools", "query",
-        "-f", "%CHROM\t%POS\t%REF\t%ALT\t%FILTER\t[%AF]\t%INFO/CSQ\n",
+        "-f", "%CHROM\t%POS\t%REF\t%ALT\t%FILTER\t[%AF]\t%INFO/CSQ_SYMBOL\n",
         str(vcf),
     ])
-
-    sym_idx = csq_fields.index("SYMBOL") if "SYMBOL" in csq_fields else 1
 
     rows = []
     for line in r.stdout.decode().splitlines():
@@ -318,22 +360,14 @@ def load_vcf(vcf: Path, csq_fields: List[str]) -> pd.DataFrame:
         if len(parts) < 6:
             continue
         chrom, pos_s, ref, alt, filt, af_s = parts[:6]
-        csq_s = parts[6] if len(parts) > 6 else ""
+        gene = parts[6].strip() if len(parts) > 6 else ""
+        if gene == ".":
+            gene = ""
 
         try:
             af = float(af_s)
         except ValueError:
             continue
-
-        # Parse gene symbol from first CSQ transcript entry
-        gene = ""
-        if csq_s and csq_s != ".":
-            first = csq_s.split(",")[0]
-            csq_parts = first.split("|")
-            try:
-                gene = csq_parts[sym_idx]
-            except IndexError:
-                pass
 
         rows.append({
             "chrom": chrom, "pos": int(pos_s),
@@ -746,14 +780,14 @@ def main() -> None:
             if not csq_format:
                 csq_format = get_csq_format(vcf)
                 if csq_format:
-                    logging.debug("CSQ format detected (%d fields)", len(csq_format))
+                    logging.debug("CSQ format has %d fields", len(csq_format))
 
         # ── Phase 2: Load filtered VCFs into DataFrames ───────────────────────────
         logging.info("Phase 2: Loading filtered VCFs...")
         df_cache: Dict[str, pd.DataFrame] = {}
 
         for name in sample_names:
-            df = load_vcf(filtered_vcfs[name], csq_format)
+            df = load_vcf(filtered_vcfs[name])
             df_cache[name] = df
             logging.info("  %-55s %4d variants", name[:55], len(df))
 
