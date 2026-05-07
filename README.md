@@ -5,46 +5,28 @@ Pairwise cross-sample contamination detector for tumour sequencing panel VCFs.
 ## Overview
 
 This tool screens a cohort of annotated tumour VCF files for cross-sample
-contamination by detecting shared rare somatic variants at consistent VAF ratios.
-It is designed for targeted haematological oncology panel sequencing data
-processed by the **Uranus clinical pipeline** (CUH Bioinformatics). The
-pre-filtering steps exactly replicate the Uranus filtering logic so that the
-variant set used for contamination screening is identical to the variant set
-reported clinically.
+contamination by detecting shared variants at consistent VAF ratios. It is
+designed for targeted haematological oncology panel sequencing data processed by
+the **Uranus clinical pipeline** (CUH Bioinformatics), using VCFs output by the
+**eggd_vep** stage.
 
 ## Expected input VCFs
 
-Input VCFs must have been produced by the Uranus pipeline. The appropriate
-files are those output by the **`eggd_vep` stage** of the Uranus pipeline —
-these are the fully annotated, normalised VCFs that carry the complete CSQ
-annotation and standalone INFO tags required by the filter steps below.
-Specifically, they are expected to have already undergone the following steps, which are confirmed
-by the presence of the corresponding command-line entries in the VCF header:
+Input VCFs must have been produced by the Uranus pipeline eggd_vep stage.
+Specifically, they must have already undergone:
 
 | Step | Command | Header tag |
 |---|---|---|
 | Variant calling | Sentieon TNhaplotyper2 (tumour-only) | `##SentieonCommandLine.TNhaplotyper2` |
 | Soft-filtering | Sentieon TNfilter | `##SentieonCommandLine.TNfilter` |
 | Normalisation | `bcftools norm -m -any --keep-sum AD` | `##bcftools_normCommand` |
-| VEP annotation | Ensembl VEP with gnomAD, COSMIC, cohort prevalence, SpliceAI | `##VEP` |
-| Cohort annotation | `bcftools annotate` (gnomAD, Prev_Count, RESCUE_LIST) | `##bcftools_annotateCommand` |
+| VEP annotation | Ensembl VEP (CSQ field) | `##INFO=<ID=CSQ,...>` |
 
 **The normalisation step (`bcftools norm -m -any`) must already have been
-applied.** This tool does not re-normalise. Running it on un-normalised VCFs
-will produce incorrect results because multiallelic records will not be split
-and indel representations may differ between samples.
+applied.** This tool does not re-normalise.
 
 The VCF INFO field must contain a `CSQ` tag in standard Ensembl VEP format,
-with the following subfields present at the indices expected by `bcftools
-+split-vep`:
-
-| Subfield | CSQ index (0-based) | Used for |
-|---|---|---|
-| `SYMBOL` | 1 | Gene label in output |
-| `Consequence` | 2 | Synonymous variant filter |
-| `gnomADe_AF` | 24 | Population frequency filter |
-| `gnomADg_AF` | 27 | Population frequency filter |
-| `Prev_Count_AC` | 31 | Cohort prevalence filter |
+with `SYMBOL` at index 1 (0-based) in the pipe-delimited format string.
 
 ---
 
@@ -52,139 +34,99 @@ with the following subfields present at the indices expected by `bcftools
 
 ### The contamination signal
 
-When one sample contaminates another (e.g. through index hopping, library
-preparation cross-talk, or sample mix-up), variants from the source sample
-appear in the recipient at a consistent fraction of the source VAF:
+When one sample contaminates another, variants from the source sample appear in
+the recipient at a consistent fraction of the source VAF:
 
 ```
-VAF_recipient ≈ VAF_source × contamination_fraction
+VAF_recipient ~ VAF_source x contamination_fraction
 ```
 
-If sample A (source) has a variant at 40% VAF and contaminates sample B at
-50% level, that variant appears in B at ~20% VAF. If many variants from sample
-A share this 2:1 ratio in sample B, that is almost certainly not random — it
-is contamination.
+Cross-sample contamination primarily consists of the **source patient's germline
+heterozygous SNPs** (~50% VAF in source) appearing at a diluted fraction in the
+recipient. These variants span the full allele frequency spectrum (common to
+rare) and include synonymous, intronic, and coding variants equally. They are
+excellent contamination markers precisely because they are stable, high-depth,
+and well-genotyped.
 
-This tool exploits that signature by computing `log2(VAF_B / VAF_A)` for every
-shared variant in a pair and looking for a cluster of variants at a consistent
-non-zero log2 ratio. The log2 scale is used because:
+### Why no population frequency filter
 
-- It symmetrises the ratio (forward 2:1 = +1, reverse 1:2 = -1)
-- Any contamination fraction produces a distinct sharp peak rather than a broad skew
-- It is visually intuitive in histogram form
+Traditional somatic reporting filters (gnomAD AF, cohort prevalence, synonymous
+exclusion) are **counterproductive** for contamination detection:
+
+- gnomAD AF >= 0.002 removed 87% of contamination markers in testing
+- Synonymous filter removed 47% of contamination markers
+- These filters exist to identify somatic mutations for clinical reporting;
+  contamination detection is a fundamentally different task
+
+The tool applies only quality filters (depth and VAF floor) that ensure reliable
+allele fraction estimates.
+
+### Dual-peak detection
+
+With no population filter, shared common germline variants between two unrelated
+people will cluster at **ratio = 1** (both carry them at ~50% VAF). The
+contamination signal clusters at a **different, consistent ratio** (e.g. 0.5 for
+50% contamination).
+
+The tool reports **two peaks** from the log2-ratio histogram:
+
+1. **Overall peak** (tallest bin across full range) — typically ratio=1 from
+   shared germline. Useful for detecting sample swaps (many variants at
+   identical VAF).
+
+2. **Non-unity peak** (tallest bin where |log2_ratio| > 0.3, i.e. ratio outside
+   0.81-1.23) — this is the **contamination signal**. Flagging and
+   directionality are based on this peak.
+
+This separation ensures that shared germline variants (ratio=1) cannot mask the
+contamination signal, regardless of how many common variants two people share.
 
 ### Directionality
 
-A peak at `log2_ratio < 0` means sample A's variants appear diluted in B —
-**A is the contamination source**.  
-A peak at `log2_ratio > 0` means B's variants appear diluted in A —
-**B is the contamination source**.
+From the non-unity peak:
 
-The contamination fraction estimate is `2^|peak_log2_ratio|` (e.g. a peak at
--1 implies ~50% contamination of B by A).
+- `peak_log2_ratio < 0`: sample A's variants appear diluted in B — **A is the
+  source**
+- `peak_log2_ratio > 0`: sample B's variants appear diluted in A — **B is the
+  source**
 
-### Central exclusion zone
+The contamination fraction estimate is `2^|peak_log2_ratio|`.
 
-There is no central exclusion zone. The peak-finder scans the full log2-ratio
-range including ratio = 1 (log2 = 0). A cluster of shared variants at similar
-VAF in both samples is just as informative as a cluster at any other ratio:
+### Pre-filtering
 
-- **Ratio ~1 (log2 ≈ 0):** variants at the same VAF in both samples — indicates
-  a sample swap, duplicate run of the same sample, or same-patient serial
-  samples. The `contamination_fraction` will report ~1.0.
-- **Ratio 0.3–0.7 (log2 ≈ -1):** variants at half VAF in B — ~50% contamination
-  of B by A.
-- **Any consistent non-random ratio:** contamination at the implied fraction.
+Only quality filters are applied — no biological/annotation filters:
 
-### Pre-filtering — Uranus clinical filter
-
-Before comparison, each VCF is filtered to remove variants that add noise
-rather than signal. The filtering exactly replicates the Uranus clinical
-pipeline filter, applied in the same order and using the same commands:
-
-| Excluded | Reason |
+| Filter | Reason |
 |---|---|
-| gnomAD genome AF ≥ 0.002 | Common germline variants present in all samples |
-| gnomAD exome AF ≥ 0.002 | As above |
-| Cohort `Prev_Count_AC` > 853 | Highly recurrent in the Uranus cohort (artefacts or ubiquitous CH mutations) |
-| Synonymous variants | Non-functional; unlikely to be specifically somatic |
-| FORMAT/DP < 99 | Insufficient read depth for reliable VAF estimation |
-| AF < 0.03 | Below minimum reportable VAF threshold |
-| *Exception: GATA2 and TP53 synonymous variants are retained* | Clinically relevant markers in haematological malignancy |
+| PASS only (default) | Removes Sentieon TNfilter soft-failures (strand bias, weak evidence, etc.) |
+| FORMAT/DP >= 99 | Ensures reliable VAF estimation from adequate read depth |
+| AF >= 0.03 | Below this VAF, allele fractions are noisy and unreliable |
 
-The filtering pipeline is 6 steps, all piped with no intermediate files:
-
-1. **`bcftools +split-vep --columns - -a CSQ -Ou -p 'CSQ_' -d`**  
-   Exact Uranus split-vep command. Extracts all CSQ subfields into
-   `CSQ_`-prefixed INFO tags (e.g. `CSQ_SYMBOL`, `CSQ_gnomADg_AF`),
-   outputting one VCF record per transcript (`-d`/duplicate mode).  
-   Using the `CSQ_` prefix avoids name conflicts with the existing
-   `String`-typed standalone INFO tags (`gnomADg_AF`, `Prev_Count_AC`, etc.)
-   that were added by the upstream annotation pipeline. The split-vep built-in
-   `.*_AF` type rule automatically assigns `Float` to all gnomAD AF fields.
-
-2. **`bcftools annotate -x INFO/CSQ`**  
-   Exact Uranus command. Removes the now-redundant raw CSQ string, leaving
-   only the expanded `CSQ_*` INFO tags.
-
-3. **`bcftools annotate -x INFO/CSQ_Prev_Count_AC -h <hdr>`**  
-   *Additional step not in Uranus — required for this tool only.*  
-   split-vep assigns `String` to `CSQ_Prev_Count_AC` because the field name
-   does not match any built-in Float/Integer type rule. A one-line header
-   override recasts it to `Integer` so the `>853` arithmetic comparison in the
-   next step works.
-
-4. **`bcftools filter --soft-filter EXCLUDE -m + -e '(CSQ_Prev_Count_AC>853 || ...'`**  
-   Exact Uranus filter expression. Soft-tags matching records by appending
-   `EXCLUDE` to the FILTER column (`-m +` preserves existing FILTER values).
-
-5. **`bcftools filter -e '(FORMAT/DP<99 || AF<0.03)'`**  
-   Exact Uranus filter. Hard-removes low-depth and low-VAF variants. The
-   `AF<0.03` threshold is consistent with `--min-af` (default 0.03).
-
-6. **`bcftools view [-f PASS] -e 'FILTER~"EXCLUDE"'`**  
-   Hard-removes all `EXCLUDE`-tagged records. In PASS-only mode (default),
-   also restricts to variants that were originally PASS in the Sentieon
-   TNfilter output. Pass `--include-non-pass` to retain soft-filtered variants.
-
-Because split-vep `-d` creates one VCF record per transcript, the same variant
-can appear multiple times. Most duplicates are removed by the downstream filters
-(different transcripts have different `CSQ_Consequence` and `CSQ_SYMBOL`). Any
-survivors are deduplicated when loading into memory, keeping the first
-occurrence (VEP's primary/worst-consequence transcript).
-
-Filtered VCFs are written to `results/filtered/` and reused on re-runs. Use
-`--force-refilter` to regenerate them (e.g. after changing `--include-non-pass`).
-
-### Pairwise comparison
-
-For N samples, N×(N−1)/2 pairs are assessed. Variant DataFrames are loaded
-into memory (typically < 1 MB per sample after filtering), so all comparisons
-run from in-memory data with no temporary files. A multiprocessing pool is
-used for cohorts with > 50 pairs; smaller cohorts run sequentially to avoid
-subprocess pickle overhead.
+The pipeline is just two bcftools commands:
+```bash
+bcftools view -f PASS input.vcf.gz -Ou \
+| bcftools filter -e '(FORMAT/DP<99 || AF<0.03)' -Oz -o filtered.vcf.gz
+```
 
 ### Flagging thresholds
 
 A pair is flagged if **both**:
 
-- `n_informative ≥ --min-shared` (default 10) — enough variants to be meaningful
+- `n_informative >= --min-shared` (default 10)
 
 **and at least one of**:
 
-- `peak_count ≥ --peak-count` (default 8) — ≥ 8 variants cluster at the same ratio
-- `peak_fraction ≥ --peak-fraction` (default 0.30) — ≥ 30% of informative shared variants fall in the same ratio bin
-
-Thresholds should be tuned to cohort size and panel design. For small panels
-(< 100 genes), `--min-shared` may need to be reduced.
+- `peak_count >= --peak-count` (default 8) — the non-unity peak has >= 8 variants
+- `peak_fraction >= --peak-fraction` (default 0.30) — >= 30% of informative
+  shared variants fall in the non-unity peak
 
 ---
 
 ## Requirements
 
-- Python ≥ 3.9
-- `bcftools` ≥ 1.14 with the `split-vep` plugin available
-- `pandas` and `numpy` Python packages
+- Python >= 3.9
+- `bcftools` >= 1.14
+- `pandas` and `numpy`
 - `matplotlib` (optional, for `--plots`)
 
 Input VCFs must be bgzipped (`.vcf.gz`) and tabix-indexed (`.vcf.gz.tbi`).
@@ -194,7 +136,7 @@ Input VCFs must be bgzipped (`.vcf.gz`) and tabix-indexed (`.vcf.gz.tbi`).
 ```bash
 git clone <repo>
 cd contamination
-pip install pandas numpy matplotlib   # or: uv pip install pandas numpy matplotlib
+pip install pandas numpy matplotlib
 ```
 
 ## Usage
@@ -203,52 +145,33 @@ pip install pandas numpy matplotlib   # or: uv pip install pandas numpy matplotl
 contamination_screen.py VCF_DIR [options]
 ```
 
-### Required argument
-
-| Argument | Description |
-|---|---|
-| `VCF_DIR` | Directory containing Uranus-annotated `*_annotated.vcf.gz` files |
-
 ### Key options
 
 | Option | Default | Description |
 |---|---|---|
 | `--outdir / -o` | `results/` | Output directory |
-| `--min-af` | `0.03` | VAF floor — variants below this in either sample are excluded from the informative set (consistent with Uranus AF < 0.03 filter) |
-| `--min-shared` | `10` | Minimum informative shared variants required to assess a pair |
-| `--peak-count` | `8` | Flag if dominant ratio bin contains ≥ this many variants |
-| `--peak-fraction` | `0.30` | Flag if dominant ratio bin fraction ≥ this value |
-| `--threads / -t` | `min(8, nCPU)` | Parallel threads (used when > 50 pairs) |
-| `--include-non-pass` | off | Include soft-filtered (non-PASS) variants; by default only Sentieon PASS variants are used |
-| `--plots` | off | Save log2-ratio histogram PNG for each flagged pair (requires matplotlib) |
-| `--force-refilter` | off | Regenerate filtered VCFs even if they already exist |
-| `--bin-width` | `0.2` | Histogram bin width in log2 units |
-| `--vcf-glob` | `*_annotated.vcf.gz` | Glob pattern to match VCF files in VCF_DIR |
+| `--min-af` | `0.03` | VAF floor for informative variants |
+| `--min-dp` | `99` | Minimum read depth |
+| `--min-shared` | `10` | Minimum informative shared variants to assess |
+| `--peak-count` | `8` | Flag if non-unity peak has >= N variants |
+| `--peak-fraction` | `0.30` | Flag if non-unity peak fraction >= this |
+| `--threads / -t` | `min(8, nCPU)` | Parallel threads |
+| `--include-non-pass` | off | Include non-PASS variants |
+| `--plots` | off | Generate histogram plots for flagged pairs |
+| `--force-refilter` | off | Regenerate filtered VCFs |
+| `--bin-width` | `0.2` | Histogram bin width (log2 units) |
+| `--vcf-glob` | `*_annotated.vcf.gz` | File matching pattern |
 | `--verbose / -v` | off | Debug logging |
 
 ### Examples
 
 ```bash
-# Standard run: PASS-only variants, default thresholds
-python contamination_screen.py /data/vcfs/ --outdir results/
+# Standard run
+python contamination_screen.py /data/vcfs/ --outdir results/ --plots
 
-# Include soft-filtered variants, generate histogram plots
+# More sensitive (smaller panels)
 python contamination_screen.py /data/vcfs/ \
-    --include-non-pass \
-    --plots \
-    --outdir results_nonpass/
-
-# More sensitive settings for small panels (< 100 genes)
-python contamination_screen.py /data/vcfs/ \
-    --min-shared 5 \
-    --peak-count 4 \
-    --peak-fraction 0.20 \
-    --outdir results_sensitive/
-
-# Force re-filter after changing --include-non-pass
-python contamination_screen.py /data/vcfs/ \
-    --force-refilter \
-    --outdir results/
+    --min-shared 5 --peak-count 4 --outdir results_sensitive/
 ```
 
 ---
@@ -257,72 +180,38 @@ python contamination_screen.py /data/vcfs/ \
 
 ```
 results/
-├── filtered/
-│   ├── sample1_annotated.vcf.gz        Uranus-filtered VCF (reused on re-runs)
-│   ├── sample1_annotated.vcf.gz.tbi
-│   └── ...
-├── summary.tsv                         One row per pair
-├── matrix.tsv                          N×N directional contamination matrix
-├── flagged_pairs/
-│   └── SAMPLE_A__vs__SAMPLE_B.tsv      Shared variant detail for flagged pairs
-└── plots/
-    └── SAMPLE_A__vs__SAMPLE_B.png      Log2-ratio histogram (--plots only)
+├── filtered/                          Quality-filtered VCFs (reused on re-runs)
+├── summary.tsv                        One row per pair (dual-peak results)
+├── matrix.tsv                         N x N directional contamination matrix
+├── flagged_pairs/*.tsv                Variant-level detail for flagged pairs
+└── plots/*.png                        Log2-ratio histograms (--plots only)
 ```
 
 ### `summary.tsv` columns
 
 | Column | Description |
 |---|---|
-| `sample_a`, `sample_b` | Sample pair (in input file order) |
-| `n_shared` | Total variants present in both samples (before VAF floor) |
-| `n_informative` | Shared variants with VAF ≥ `--min-af` in both samples |
-| `peak_log2_ratio` | Centre of the dominant ratio bin in log2 units |
-| `peak_ratio` | 2^peak_log2_ratio — the implied VAF ratio between samples |
-| `peak_count` | Number of variants in the dominant ratio bin |
-| `peak_fraction` | peak_count / n_informative |
-| `contamination_source` | Sample whose variants appear at higher VAF (the source) |
-| `contamination_recipient` | Sample whose variants appear at lower VAF (the recipient) |
-| `contamination_fraction` | Estimated fraction of recipient library derived from source |
-| `flagged` | TRUE if pair meets the flagging thresholds |
-
-### `matrix.tsv`
-
-An N×N directional matrix. Rows = contamination recipient, columns =
-contamination source. Cell value is `peak_count` for the source→recipient
-direction. A clean cohort produces an all-zero matrix; a contaminated pair
-produces a non-zero entry at `[recipient, source]`.
-
-### Flagged pair detail TSVs
-
-One file per flagged pair in `flagged_pairs/`. Contains all informative shared
-variants with columns:
-
-`chrom`, `pos`, `ref`, `alt`, `filter_a`, `filter_b`, `af_a`, `af_b`, `ratio`,
-`log2_ratio`, `in_peak`, `gene`
-
-Sorted by `log2_ratio` so the contamination peak cluster is visually
-contiguous. `in_peak = True` marks the variants that fall within the dominant
-ratio bin and drive the flagging.
+| `sample_a`, `sample_b` | Sample pair |
+| `n_shared` | Total shared variants |
+| `n_informative` | Shared variants with VAF >= min-af in both |
+| `overall_log2`, `overall_count`, `overall_fraction` | Tallest peak across full range (usually ratio=1 from germline) |
+| `peak_log2_ratio`, `peak_ratio` | Non-unity peak centre (the contamination signal) |
+| `peak_count`, `peak_fraction` | Strength of non-unity peak |
+| `contamination_source` | Source sample (higher VAF) |
+| `contamination_recipient` | Recipient sample (diluted VAF) |
+| `contamination_fraction` | Estimated fraction of recipient from source |
+| `flagged` | TRUE if meets thresholds |
 
 ---
 
-## Interpretation notes
+## Interpretation
 
-- A **peak at ratio ~1 (log2 ≈ 0)** indicates variants shared at the same VAF
-  in both samples. In a cohort of unrelated samples this strongly suggests a
-  sample swap or duplicate run. In serial samples from the same patient it
-  reflects shared clonal mutations and is expected; the analyst should verify
-  the sample IDs.
-- A **sharp peak away from 0** indicates contamination at the implied fraction.
-  The peak position gives the contamination fraction (2^|peak|) and its sign
-  gives the direction.
-- Very **low n_informative** (< `--min-shared`) pairs are reported in
-  `summary.tsv` but not flagged; there are insufficient shared rare variants to
-  draw conclusions.
-- The `contamination_fraction` estimate assumes the source variant VAF
-  represents the true allele fraction in the source library. For near-clonal
-  or near-homozygous variants the estimate may be less accurate.
-- This tool is designed for **unrelated samples** in a cohort. Pairs from the
-  same patient at different timepoints will share many variants near ratio 1
-  (which is not flagged) but may also show contamination signal if there was
-  genuine cross-contamination.
+- **Non-unity peak with high count:** cross-sample contamination at the implied
+  fraction. Direction indicates which sample is the source.
+- **Large overall peak at ratio=1:** many variants shared at similar VAF. In
+  unrelated samples this suggests a sample swap or duplicate; in related samples
+  (same patient) it reflects shared biology.
+- **No significant peaks:** clean pair with minimal variant sharing.
+- The tool is designed for **unrelated samples**. Same-patient pairs will have
+  large overall peaks at ratio=1 (shared clonal mutations) which is expected and
+  not flagged as contamination.
