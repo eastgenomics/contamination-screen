@@ -188,6 +188,7 @@ contamination_screen.py VCF_DIR [options]
 | `--threads / -t` | `min(8, nCPU)` | Parallel threads |
 | `--include-non-pass` | off | Include non-PASS variants |
 | `--plots` | off | Generate histogram plots for flagged pairs |
+| `--max-output` | `10` | Maximum number of flagged pairs to write detail TSVs and plots for (ranked by peak_count). Set to 0 for no limit |
 | `--force-refilter` | off | Regenerate filtered VCFs |
 | `--bin-width` | `0.2` | Histogram bin width (log2 units) |
 | `--vcf-glob` | `*_annotated.vcf.gz` | File matching pattern |
@@ -213,9 +214,14 @@ results/
 ├── filtered/                          Quality-filtered VCFs (reused on re-runs)
 ├── summary.tsv                        One row per pair (dual-peak results)
 ├── matrix.tsv                         N x N directional contamination matrix
-├── flagged_pairs/*.tsv                Variant-level detail for flagged pairs
-└── plots/*.png                        Log2-ratio histograms (--plots only)
+├── flagged_pairs/*.tsv                Variant-level detail (top N by peak_count)
+└── plots/*.png                        Log2-ratio histograms (top N, --plots only)
 ```
+
+`summary.tsv` and `matrix.tsv` always report **all** pairs. Detail TSVs and
+plots are only generated for the top `--max-output` (default 10) flagged pairs,
+ranked by `peak_count` descending (most suspicious first). This keeps output
+manageable for large cohorts. Set `--max-output 0` to output all flagged pairs.
 
 ### `summary.tsv` columns
 
