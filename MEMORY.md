@@ -30,7 +30,7 @@ Shared rare somatic variants at a consistent VAF ratio = contamination fingerpri
 `log2(VAF_B / VAF_A)` histogram; peak away from 0 = contamination.
 - peak_log2 < 0: A is source (A's variants diluted in B)
 - peak_log2 > 0: B is source
-- Central exclusion zone ±0.3 log2 units: avoids flagging biologically shared variants (same patient, different timepoints)
+- No central exclusion zone: peak-finder scans full log2 range including ratio ~1 (sample swaps)
 - contamination_fraction = 2^|peak_log2|
 
 ### Architecture
@@ -118,7 +118,7 @@ f6cd6dc  Add DP/AF quality filter to match clinical pipeline
 
 - Variant counts after filtering are low (10-15 per sample PASS-only). For 48 unrelated samples, contamination signal should be stronger — many more shared rare variants expected between genuinely contaminated pairs vs. the same-patient samples used for testing here.
 - The `--min-shared` default of 10 and `--peak-count` default of 8 may need tuning once run on the full 48-sample cohort.
-- The central exclusion zone (±0.3 log2) means ratio ~1 (same-patient) is not flagged — correct for contamination detection but means sample swaps (same sample twice) would also not be flagged. Consider a separate swap-detection check if needed.
+- No central exclusion zone: a peak at ratio ~1 correctly flags same-patient sample pairs and swaps (previously this would have been silently suppressed). The analyst distinguishes same-patient sharing from true contamination by reviewing sample metadata.
 - `load_vcf` reads `CSQ_SYMBOL` from the filtered VCF INFO field. If a variant has no CSQ annotation (intergenic), gene will be empty string.
 - plots require matplotlib (optional dependency).
 

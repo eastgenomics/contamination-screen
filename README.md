@@ -85,11 +85,16 @@ The contamination fraction estimate is `2^|peak_log2_ratio|` (e.g. a peak at
 
 ### Central exclusion zone
 
-Variants at similar VAF in both samples (log2 ratio ≈ 0) are excluded from
-peak detection. These may represent variants shared for biological reasons (e.g.
-same patient at different timepoints, clonal haematopoiesis present in both
-samples) rather than contamination. The default exclusion window is ±0.3 log2
-units (ratio range 0.81–1.23), configurable with `--central-excl`.
+There is no central exclusion zone. The peak-finder scans the full log2-ratio
+range including ratio = 1 (log2 = 0). A cluster of shared variants at similar
+VAF in both samples is just as informative as a cluster at any other ratio:
+
+- **Ratio ~1 (log2 ≈ 0):** variants at the same VAF in both samples — indicates
+  a sample swap, duplicate run of the same sample, or same-patient serial
+  samples. The `contamination_fraction` will report ~1.0.
+- **Ratio 0.3–0.7 (log2 ≈ -1):** variants at half VAF in B — ~50% contamination
+  of B by A.
+- **Any consistent non-random ratio:** contamination at the implied fraction.
 
 ### Pre-filtering — Uranus clinical filter
 
@@ -218,7 +223,6 @@ contamination_screen.py VCF_DIR [options]
 | `--plots` | off | Save log2-ratio histogram PNG for each flagged pair (requires matplotlib) |
 | `--force-refilter` | off | Regenerate filtered VCFs even if they already exist |
 | `--bin-width` | `0.2` | Histogram bin width in log2 units |
-| `--central-excl` | `0.3` | Exclude ±this log2 window around 0 from peak detection |
 | `--vcf-glob` | `*_annotated.vcf.gz` | Glob pattern to match VCF files in VCF_DIR |
 | `--verbose / -v` | off | Debug logging |
 
@@ -304,15 +308,14 @@ ratio bin and drive the flagging.
 
 ## Interpretation notes
 
-- A **sharp peak away from 0** in the log2-ratio histogram is the signature of
-  contamination. The peak position gives the contamination fraction (2^|peak|)
-  and its sign gives the direction.
-- A **diffuse distribution centred on 0** is expected for unrelated samples
-  with few shared rare variants — this is the null pattern.
-- A peak **near 0** (excluded from detection by default) indicates variants
-  shared at similar VAF in both samples. This is expected for serial samples
-  from the same patient (clonal haematopoiesis or somatic mutations present at
-  both timepoints) and does **not** indicate contamination.
+- A **peak at ratio ~1 (log2 ≈ 0)** indicates variants shared at the same VAF
+  in both samples. In a cohort of unrelated samples this strongly suggests a
+  sample swap or duplicate run. In serial samples from the same patient it
+  reflects shared clonal mutations and is expected; the analyst should verify
+  the sample IDs.
+- A **sharp peak away from 0** indicates contamination at the implied fraction.
+  The peak position gives the contamination fraction (2^|peak|) and its sign
+  gives the direction.
 - Very **low n_informative** (< `--min-shared`) pairs are reported in
   `summary.tsv` but not flagged; there are insufficient shared rare variants to
   draw conclusions.

@@ -123,9 +123,6 @@ _EXCLUDE_EXPR = (
 # Histogram parameters
 _LOG2_RANGE   = 4.0   # ±4 log2 units spans ratios from 1:16 to 16:1
 _BIN_WIDTH    = 0.2   # bin width in log2 units
-_CENTRAL_EXCL = 0.3   # exclude bins within ±0.3 log2 of 0 (ratio 0.81–1.23)
-                      # to avoid flagging variants shared at similar VAF
-                      # (e.g. germline variants in related samples)
 
 VCF_GLOB = "*_annotated.vcf.gz"
 
@@ -186,11 +183,6 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--bin-width", type=float, default=_BIN_WIDTH,
         help="Log2-ratio histogram bin width (default: %(default)s)",
-    )
-    p.add_argument(
-        "--central-excl", type=float, default=_CENTRAL_EXCL,
-        help="Exclude log2 ratios within ±this value of 0 from peak detection "
-             "(default: %(default)s)",
     )
     p.add_argument(
         "--force-refilter", action="store_true",
@@ -423,18 +415,17 @@ def load_vcf(vcf: Path) -> pd.DataFrame:
 def _find_peak(
     log2_ratios: np.ndarray,
     bin_width: float,
-    central_excl: float,
 ) -> dict:
     """
-    Scan a log2-ratio distribution for the tallest bin outside the central
-    exclusion zone.
+    Find the tallest bin in the log2-ratio histogram.
 
-    The central exclusion zone (|log2_ratio| < central_excl) covers variants
-    at similar VAF in both samples, which could represent biologically shared
-    mutations (e.g. same patient, different timepoints) rather than contamination.
+    The full histogram range is scanned with no exclusion zone. A peak at
+    log2-ratio = 0 (ratio ~1, similar VAF in both samples) is just as
+    informative as any other peak: it may indicate a sample swap or
+    same-patient samples and should not be suppressed.
 
     Returns:
-        log2_ratio  : centre of the peak bin (nan if no peak found)
+        log2_ratio  : centre of the peak bin (nan if no variants)
         count       : number of variants in that bin
         fraction    : count / total variants
     """
@@ -449,14 +440,10 @@ def _find_peak(
     counts, edges = np.histogram(log2_ratios, bins=edges)
     centers = (edges[:-1] + edges[1:]) / 2.0
 
-    # Zero out the central bins to avoid flagging shared biology
-    masked = counts.astype(float).copy()
-    masked[np.abs(centers) < central_excl] = 0.0
-
-    if masked.max() == 0:
+    if counts.max() == 0:
         return {"log2_ratio": float("nan"), "count": 0, "fraction": 0.0}
 
-    idx = int(np.argmax(masked))
+    idx = int(np.argmax(counts))
     return {
         "log2_ratio": float(centers[idx]),
         "count": int(counts[idx]),
@@ -469,7 +456,6 @@ def _compare(
     name_b: str, df_b: pd.DataFrame,
     min_af: float,
     bin_width: float,
-    central_excl: float,
     include_shared_df: bool = False,
 ) -> Tuple[dict, Optional[pd.DataFrame]]:
     """
@@ -523,7 +509,7 @@ def _compare(
     inf["ratio"] = ratios.values
     inf["log2_ratio"] = np.log2(ratios.values)
 
-    peak = _find_peak(inf["log2_ratio"].values, bin_width, central_excl)
+    peak = _find_peak(inf["log2_ratio"].values, bin_width)
 
     result.update({
         "peak_log2_ratio": peak["log2_ratio"],
@@ -567,9 +553,9 @@ def _worker(task: tuple) -> dict:
     (no DataFrame). DataFrames for flagged pairs are recomputed in the main
     process to avoid pickle overhead across all 1128 workers.
     """
-    name_a, df_a, name_b, df_b, min_af, bin_width, central_excl = task
+    name_a, df_a, name_b, df_b, min_af, bin_width = task
     result, _ = _compare(name_a, df_a, name_b, df_b,
-                         min_af, bin_width, central_excl,
+                         min_af, bin_width,
                          include_shared_df=False)
     return result
 
@@ -640,7 +626,6 @@ def write_flagged_details(
     outdir: Path,
     min_af: float,
     bin_width: float,
-    central_excl: float,
 ) -> None:
     """
     For each flagged pair, write a TSV of all shared informative variants with
@@ -654,7 +639,7 @@ def write_flagged_details(
         na, nb = r["sample_a"], r["sample_b"]
         _, shared = _compare(
             na, df_cache[na], nb, df_cache[nb],
-            min_af, bin_width, central_excl,
+            min_af, bin_width,
             include_shared_df=True,
         )
         if shared is None or shared.empty:
@@ -678,7 +663,6 @@ def write_plots(
     outdir: Path,
     min_af: float,
     bin_width: float,
-    central_excl: float,
 ) -> None:
     """Generate a log2-ratio histogram for each flagged pair."""
     try:
@@ -698,7 +682,7 @@ def write_plots(
         na, nb = r["sample_a"], r["sample_b"]
         _, shared = _compare(
             na, df_cache[na], nb, df_cache[nb],
-            min_af, bin_width, central_excl,
+            min_af, bin_width,
             include_shared_df=True,
         )
         if shared is None or shared.empty or "log2_ratio" not in shared.columns:
@@ -707,10 +691,6 @@ def write_plots(
         fig, ax = plt.subplots(figsize=(10, 4))
         ax.hist(shared["log2_ratio"], bins=bins,
                 color="steelblue", edgecolor="white", linewidth=0.4, alpha=0.85)
-
-        # Central exclusion zone
-        ax.axvspan(-central_excl, central_excl, alpha=0.08, color="grey",
-                   label=f"Central exclusion (±{central_excl} log₂)")
 
         # Reference ratio lines
         for lr, lbl in [(-1.0, "2:1"), (-2.0, "4:1"), (1.0, "1:2"), (2.0, "1:4")]:
@@ -834,7 +814,7 @@ def main() -> None:
 
         tasks = [
             (na, df_cache[na], nb, df_cache[nb],
-             args.min_af, args.bin_width, args.central_excl)
+             args.min_af, args.bin_width)
             for na, nb in combinations(sample_names, 2)
         ]
 
@@ -873,12 +853,12 @@ def main() -> None:
             logging.info("Writing details for %d flagged pair(s)...", len(flagged))
             write_flagged_details(
                 flagged, df_cache, args.outdir,
-                args.min_af, args.bin_width, args.central_excl,
+                args.min_af, args.bin_width,
             )
             if args.plots:
                 write_plots(
                     flagged, df_cache, args.outdir,
-                    args.min_af, args.bin_width, args.central_excl,
+                    args.min_af, args.bin_width,
                 )
         else:
             logging.info("No pairs flagged.")
