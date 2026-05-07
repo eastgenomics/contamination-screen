@@ -14,8 +14,11 @@ reported clinically.
 
 ## Expected input VCFs
 
-Input VCFs must have been produced by the Uranus pipeline. Specifically, they
-are expected to have already undergone the following steps, which are confirmed
+Input VCFs must have been produced by the Uranus pipeline. The appropriate
+files are those output by the **`eggd_vep` stage** of the Uranus pipeline —
+these are the fully annotated, normalised VCFs that carry the complete CSQ
+annotation and standalone INFO tags required by the filter steps below.
+Specifically, they are expected to have already undergone the following steps, which are confirmed
 by the presence of the corresponding command-line entries in the VCF header:
 
 | Step | Command | Header tag |

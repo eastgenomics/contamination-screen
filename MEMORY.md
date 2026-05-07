@@ -9,6 +9,8 @@ Tool: `contamination_screen.py` — pairwise cross-sample contamination detector
 
 ## Context that drove the work
 
+Input VCFs are produced by the **`eggd_vep` stage** of the Uranus pipeline.
+
 Three VCFs in `~/Downloads/` for patient TULIP24-5877:
 - `26098K0076` suffix `-M-` (bone marrow, later timepoint) — 720 variants
 - `26093K0005` suffix `-M-` (bone marrow, earlier timepoint) — 452 variants
