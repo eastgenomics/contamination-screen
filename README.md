@@ -306,7 +306,8 @@ ranked by `peak_count` descending (most suspicious first). This keeps output
 manageable for large cohorts. Set `--max-output 0` to output all flagged pairs.
 
 If `--plate-layout` is provided, the matrix rows and columns are ordered by
-plate position (column-major: A1, B1...H1, A2, B2...H6), making adjacent-well
+plate position (column-major: A1, B1...H1, A2, B2...up to the last column),
+making adjacent-well
 contamination appear as non-zero entries near the diagonal. Without
 `--plate-layout`, samples are ordered by input filename.
 

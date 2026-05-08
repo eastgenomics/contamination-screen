@@ -560,8 +560,9 @@ def _get_plate_order(plate_file: Path, sample_names: List[str]) -> List[str]:
                         plate_file.name)
         return sample_names
 
-    # Keep only primary sample rows (not per-lane FASTQ entries)
-    gs = gs[gs["Sample"].str.match(r"^\d{9}-", na=False)]
+    # Drop per-lane FASTQ rows (e.g. Sample_S1_L001) — these have no well
+    # position and are a MultiQC-specific row type. We do not filter by
+    # sample name format so the function works with any naming scheme.
     gs = gs[~gs["Sample"].str.contains(r"_S\d+_L\d+", na=False)]
     gs = gs.dropna(subset=[col_row, col_col])
 
