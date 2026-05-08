@@ -121,6 +121,12 @@ def parse_args() -> argparse.Namespace:
         help="Log2-ratio histogram bin width (default: %(default)s)",
     )
     p.add_argument(
+        "--plate-layout", type=Path, default=None,
+        help="MultiQC general stats file (multiqc_general_stats.txt) to order "
+             "the matrix by plate position. Makes adjacent-well contamination "
+             "patterns visible. If not provided, samples are ordered by filename.",
+    )
+    p.add_argument(
         "--force-refilter", action="store_true",
         help="Re-run filtering even if filtered VCFs already exist",
     )
@@ -492,6 +498,48 @@ def write_summary(df: pd.DataFrame, outdir: Path) -> None:
     logging.info("Summary written: %s  (%d/%d pairs flagged)", out, n, len(df))
 
 
+def _get_plate_order(plate_file: Path, sample_names: List[str]) -> List[str]:
+    """
+    Parse plate positions from a MultiQC general stats file and return
+    sample names ordered by plate position (column-major: A1, B1...H1, A2...).
+
+    Samples not found in the plate file are appended at the end in their
+    original order.
+    """
+    gs = pd.read_csv(plate_file, sep="\t")
+    col_row = "custom_content_samplesheet_wells-well_row"
+    col_col = "custom_content_samplesheet_wells-well_column"
+
+    if col_row not in gs.columns or col_col not in gs.columns:
+        logging.warning("Plate layout columns not found in %s; using file order",
+                        plate_file.name)
+        return sample_names
+
+    # Keep only primary sample rows (not per-lane FASTQ entries)
+    gs = gs[gs["Sample"].str.match(r"^\d{9}-", na=False)]
+    gs = gs[~gs["Sample"].str.contains(r"_S\d+_L\d+", na=False)]
+    gs = gs.dropna(subset=[col_row, col_col])
+
+    # Build position map: sample_name -> (column, row_letter)
+    pos_map = {}
+    for _, row in gs.iterrows():
+        name = row["Sample"]
+        if name in sample_names:
+            pos_map[name] = (int(row[col_col]), row[col_row])
+
+    # Sort by column then row
+    ordered = sorted(
+        [n for n in sample_names if n in pos_map],
+        key=lambda n: (pos_map[n][0], pos_map[n][1]),
+    )
+    # Append any samples not found in plate file
+    remaining = [n for n in sample_names if n not in pos_map]
+    if remaining:
+        logging.warning("%d sample(s) not found in plate layout; appended at end",
+                        len(remaining))
+    return ordered + remaining
+
+
 def write_matrix(
     results: List[dict],
     sample_names: List[str],
@@ -720,7 +768,13 @@ def main() -> None:
         peak_count_thresh=args.peak_count,
     )
     write_summary(summary_df, args.outdir)
-    write_matrix(raw_results, sample_names, args.outdir)
+    # Determine matrix ordering
+    if args.plate_layout:
+        matrix_order = _get_plate_order(args.plate_layout, sample_names)
+        logging.info("Matrix ordered by plate position from %s", args.plate_layout.name)
+    else:
+        matrix_order = sample_names
+    write_matrix(raw_results, matrix_order, args.outdir)
 
     flagged_keys = set(
         zip(
