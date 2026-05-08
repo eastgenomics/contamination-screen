@@ -21,9 +21,9 @@ import os
 import re
 import subprocess
 import sys
-import tempfile
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from itertools import combinations
-from multiprocessing import Pool, cpu_count
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -40,11 +40,11 @@ _BIN_WIDTH  = 0.2   # bin width in log2 units
 # Default glob for VCF files
 VCF_GLOB = "*_annotated.vcf.gz"
 
-# CSQ field index for SYMBOL (0-based, from standard Uranus VEP format string)
-_CSQ_SYMBOL_IDX = 1
 # Default gnomAD AF threshold: remove very common variants where hom/het
 # differences between individuals create false 2:1 ratio signals
 _MAX_GNOMAD_AF = 0.40
+
+# Gene symbol is extracted by bcftools +split-vep as CSQ_SYMBOL (see filter_vcf)
 
 
 # -- Argument parsing ---------------------------------------------------------
@@ -70,8 +70,17 @@ def parse_args() -> argparse.Namespace:
     )
     p.add_argument(
         "--min-dp", type=int, default=99,
-        help="Minimum read depth (FORMAT/DP) to retain a variant "
+        help="Minimum read depth (FORMAT/DP) to retain a variant. The filter "
+             "expression is DP < min_dp, so DP=99 is retained at default. "
+             "This matches the clinical pipeline expression 'FORMAT/DP<99'. "
              "(default: %(default)s)",
+    )
+    p.add_argument(
+        "--max-gnomad", type=float, default=_MAX_GNOMAD_AF,
+        help="Exclude variants with gnomAD AF >= this value. Very common "
+             "variants (AF > 0.40) produce false 2:1 ratio signals when one "
+             "sample is hom-alt and the other is het. "
+             "Set to 1.0 to disable. (default: %(default)s)",
     )
     p.add_argument(
         "--min-shared", type=int, default=10,
@@ -87,7 +96,7 @@ def parse_args() -> argparse.Namespace:
              "~100 samples. (default: %(default)s)",
     )
     p.add_argument(
-        "--threads", "-t", type=int, default=min(8, cpu_count()),
+        "--threads", "-t", type=int, default=min(8, os.cpu_count() or 1),
         help="Parallel threads for pairwise comparisons (default: %(default)s)",
     )
     p.add_argument(
@@ -106,25 +115,18 @@ def parse_args() -> argparse.Namespace:
              "Set to 0 for no limit.",
     )
     p.add_argument(
-        "--vcf-glob", default=VCF_GLOB,
-        help="Glob pattern for VCF files in vcf_dir (default: %(default)s)",
-    )
-    p.add_argument(
-        "--max-gnomad", type=float, default=_MAX_GNOMAD_AF,
-        help="Exclude variants with gnomAD AF >= this value. Very common "
-             "variants (AF > 0.40) produce false 2:1 ratio signals when one "
-             "sample is hom-alt and the other is het. "
-             "Set to 1.0 to disable. (default: %(default)s)",
-    )
-    p.add_argument(
-        "--bin-width", type=float, default=_BIN_WIDTH,
-        help="Log2-ratio histogram bin width (default: %(default)s)",
-    )
-    p.add_argument(
         "--plate-layout", type=Path, default=None,
         help="MultiQC general stats file (multiqc_general_stats.txt) to order "
              "the matrix by plate position. Makes adjacent-well contamination "
              "patterns visible. If not provided, samples are ordered by filename.",
+    )
+    p.add_argument(
+        "--vcf-glob", default=VCF_GLOB,
+        help="Glob pattern for VCF files in vcf_dir (default: %(default)s)",
+    )
+    p.add_argument(
+        "--bin-width", type=float, default=_BIN_WIDTH,
+        help="Log2-ratio histogram bin width (default: %(default)s)",
     )
     p.add_argument(
         "--force-refilter", action="store_true",
@@ -149,13 +151,28 @@ def _run(cmd: List[str], check: bool = True) -> subprocess.CompletedProcess:
 
 def get_sample_name(vcf: Path) -> str:
     """Return the sample column name from the VCF #CHROM header line."""
-    r = _run(["bcftools", "view", "-h", str(vcf)])
+    r = _run(["bcftools", "view", "-h", str(vcf)], check=False)
+    if r.returncode != 0:
+        logging.warning(
+            "Could not read header from %s; using stem '%s'",
+            vcf.name, vcf.stem,
+        )
+        return vcf.stem
     for line in r.stdout.decode().splitlines():
         if line.startswith("#CHROM"):
             parts = line.rstrip("\n").split("\t")
             if len(parts) > 9:
                 return parts[9]
+    logging.warning(
+        "Could not parse sample name from %s; using stem '%s'",
+        vcf.name, vcf.stem,
+    )
     return vcf.stem
+
+
+def _drain_stderr(stream, collector: list) -> None:
+    """Read all stderr from a subprocess pipe into collector list."""
+    collector.append(stream.read())
 
 
 def filter_vcf(src: Path, dst: Path, pass_only: bool, min_dp: int,
@@ -220,17 +237,32 @@ def filter_vcf(src: Path, dst: Path, pass_only: bool, min_dp: int,
                           stderr=subprocess.PIPE)
     p3.stdout.close()
 
+    # Drain stderr from p1-p3 in background threads to prevent deadlock
+    # if any process writes >64KB to stderr
+    stderr_collectors: Dict[subprocess.Popen, list] = {p: [] for p in (p1, p2, p3)}
+    drain_threads = [
+        threading.Thread(target=_drain_stderr, args=(p.stderr, stderr_collectors[p]))
+        for p in (p1, p2, p3)
+    ]
+    for t in drain_threads:
+        t.start()
+
     _, p4_err = p4.communicate()
+    for t in drain_threads:
+        t.join()
     p1.wait(); p2.wait(); p3.wait()
 
+    # Check returncodes BEFORE indexing
     for proc, name in [(p1, "view"), (p2, "filter/DP+AF"),
                        (p3, "split-vep"), (p4, "view/gnomAD")]:
         if proc.returncode != 0:
-            stderr = proc.stderr.read().decode() if proc.stderr else ""
+            stderr = b"".join(stderr_collectors.get(proc, []))
             raise RuntimeError(
-                f"bcftools {name} failed for {src.name}:\n{stderr}\n{p4_err.decode()}"
+                f"bcftools {name} failed for {src.name}:\n"
+                f"{stderr.decode()}\n{p4_err.decode()}"
             )
 
+    # Only index after all steps confirmed successful
     _run(["bcftools", "index", "-t", str(dst)])
 
 
@@ -405,8 +437,18 @@ def _compare(
     if n_shared < 2:
         return result, None
 
-    merged = merged.copy()
-    ratios = (merged["af_b"] / merged["af_a"]).clip(1e-6, 1e6)
+    # Filter out variants with AF=0 in either sample (would produce
+    # infinite/undefined ratios and inflate n_shared without contributing signal)
+    merged = merged[(merged["af_a"] > 0) & (merged["af_b"] > 0)].copy()
+    n_valid = len(merged)
+    if n_valid < 2:
+        return result, None
+    if n_valid < n_shared:
+        logging.debug("  %d variant(s) with AF=0 excluded from ratio histogram",
+                      n_shared - n_valid)
+    result["n_shared"] = n_valid
+
+    ratios = merged["af_b"] / merged["af_a"]
     merged["ratio"] = ratios.values
     merged["log2_ratio"] = np.log2(ratios.values)
 
@@ -461,12 +503,11 @@ def _compare(
     return result, (merged if include_shared_df else None)
 
 
-def _worker(task: tuple) -> dict:
-    """Multiprocessing worker. Returns result dict only."""
-    name_a, df_a, name_b, df_b, bin_width = task
-    result, _ = _compare(name_a, df_a, name_b, df_b,
-                         bin_width,
-                         include_shared_df=False)
+def _worker(args_tuple: tuple) -> dict:
+    """Thread worker. Returns result dict only."""
+    name_a, name_b, df_cache, bin_width = args_tuple
+    result, _ = _compare(name_a, df_cache[name_a], name_b, df_cache[name_b],
+                         bin_width, include_shared_df=False)
     return result
 
 
@@ -506,6 +547,10 @@ def _get_plate_order(plate_file: Path, sample_names: List[str]) -> List[str]:
     Samples not found in the plate file are appended at the end in their
     original order.
     """
+    if not plate_file.exists():
+        logging.error("Plate layout file not found: %s", plate_file)
+        sys.exit(1)
+
     gs = pd.read_csv(plate_file, sep="\t")
     col_row = "custom_content_samplesheet_wells-well_row"
     col_col = "custom_content_samplesheet_wells-well_column"
@@ -515,8 +560,9 @@ def _get_plate_order(plate_file: Path, sample_names: List[str]) -> List[str]:
                         plate_file.name)
         return sample_names
 
-    # Keep only primary sample rows (not per-lane FASTQ entries)
-    gs = gs[gs["Sample"].str.match(r"^\d{9}-", na=False)]
+    # Drop per-lane FASTQ rows (e.g. Sample_S1_L001) — these have no well
+    # position and are a MultiQC-specific row type. We do not filter by
+    # sample name format so the function works with any naming scheme.
     gs = gs[~gs["Sample"].str.contains(r"_S\d+_L\d+", na=False)]
     gs = gs.dropna(subset=[col_row, col_col])
 
@@ -565,9 +611,8 @@ def write_matrix(
 
 def write_flagged_details(
     flagged: List[dict],
-    df_cache: Dict[str, pd.DataFrame],
+    shared_cache: Dict[tuple, pd.DataFrame],
     outdir: Path,
-    bin_width: float,
 ) -> None:
     """Write per-variant detail TSV for each flagged pair."""
     detail_dir = outdir / "flagged_pairs"
@@ -575,11 +620,7 @@ def write_flagged_details(
 
     for r in flagged:
         na, nb = r["sample_a"], r["sample_b"]
-        _, shared = _compare(
-            na, df_cache[na], nb, df_cache[nb],
-            bin_width,
-            include_shared_df=True,
-        )
+        shared = shared_cache.get((na, nb))
         if shared is None or shared.empty:
             continue
 
@@ -597,7 +638,7 @@ def write_flagged_details(
 
 def write_plots(
     flagged: List[dict],
-    df_cache: Dict[str, pd.DataFrame],
+    shared_cache: Dict[tuple, pd.DataFrame],
     outdir: Path,
     bin_width: float,
 ) -> None:
@@ -617,11 +658,7 @@ def write_plots(
 
     for r in flagged:
         na, nb = r["sample_a"], r["sample_b"]
-        _, shared = _compare(
-            na, df_cache[na], nb, df_cache[nb],
-            bin_width,
-            include_shared_df=True,
-        )
+        shared = shared_cache.get((na, nb))
         if shared is None or shared.empty or "log2_ratio" not in shared.columns:
             continue
 
@@ -629,11 +666,12 @@ def write_plots(
         ax.hist(shared["log2_ratio"], bins=bins,
                 color="steelblue", edgecolor="white", linewidth=0.4, alpha=0.85)
 
-        # Reference ratio lines
+        # Reference ratio lines (using axes fraction for y to avoid tight_layout issues)
         for lr, lbl in [(-1.0, "2:1"), (-2.0, "4:1"), (1.0, "1:2"), (2.0, "1:4")]:
             ax.axvline(lr, color="grey", linestyle=":", linewidth=0.8, alpha=0.6)
-            ax.text(lr, ax.get_ylim()[1] * 0.92, lbl,
-                    ha="center", fontsize=7, color="grey")
+            ax.annotate(lbl, xy=(lr, 0.92),
+                        xycoords=("data", "axes fraction"),
+                        ha="center", fontsize=7, color="grey")
 
         # Non-unity peak line (contamination)
         plr = r.get("peak_log2_ratio", float("nan"))
@@ -747,15 +785,17 @@ def main() -> None:
         n_pairs, args.threads, "s" if args.threads != 1 else "",
     )
 
+    # Use ThreadPoolExecutor to avoid DataFrame serialisation overhead.
+    # pandas/numpy release the GIL for array operations, so threads
+    # provide real parallelism here without the pickle cost of multiprocessing.
     tasks = [
-        (na, df_cache[na], nb, df_cache[nb],
-         args.bin_width)
+        (na, nb, df_cache, args.bin_width)
         for na, nb in combinations(sample_names, 2)
     ]
 
-    if args.threads > 1 and n_pairs > 50:
-        with Pool(args.threads) as pool:
-            raw_results = pool.map(_worker, tasks)
+    if args.threads > 1:
+        with ThreadPoolExecutor(max_workers=args.threads) as executor:
+            raw_results = list(executor.map(_worker, tasks))
     else:
         raw_results = [_worker(t) for t in tasks]
 
@@ -801,15 +841,19 @@ def main() -> None:
             "%d pair(s) flagged; writing details for top %d...",
             len(flagged), len(output_pairs),
         )
-        write_flagged_details(
-            output_pairs, df_cache, args.outdir,
-            args.bin_width,
-        )
+
+        # Compute shared DataFrames once for output pairs (avoids re-running
+        # _compare in both write_flagged_details and write_plots)
+        shared_cache: Dict[tuple, pd.DataFrame] = {}
+        for r in output_pairs:
+            na, nb = r["sample_a"], r["sample_b"]
+            _, shared = _compare(na, df_cache[na], nb, df_cache[nb],
+                                 args.bin_width, include_shared_df=True)
+            shared_cache[(na, nb)] = shared
+
+        write_flagged_details(output_pairs, shared_cache, args.outdir)
         if args.plots:
-            write_plots(
-                output_pairs, df_cache, args.outdir,
-                args.bin_width,
-            )
+            write_plots(output_pairs, shared_cache, args.outdir, args.bin_width)
     else:
         logging.info("No pairs flagged.")
 
