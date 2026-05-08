@@ -1,129 +1,117 @@
-# Session Memory - contamination_screen development
-# 2026-05-07
+# Session Memory — contamination_screen
+# Last updated: 2026-05-07
 
 ## Project
-`~/Documents/contamination/` - git repo
-Tool: `contamination_screen.py` - pairwise cross-sample contamination detector for the Uranus haematological oncology panel sequencing pipeline (CUH Bioinformatics).
+
+`~/Documents/contamination/` — git repo, pushed to https://github.com/woook/contamination-screen (private)
+
+Tool: `contamination_screen.py` — pairwise cross-sample contamination detector for the Uranus haematological oncology panel sequencing pipeline (CUH Bioinformatics).
 
 ---
 
-## Context
+## Key facts
 
-Three VCFs in `~/Downloads/` from the same sequencing run (26TULIP24), **different patients**:
-- `26098K0076` suffix `-M-` (142820540) - 720 variants unfiltered, 120 after quality filter
-- `26093K0005` suffix `-M-` (142789636) - 452 variants unfiltered, 160 after quality filter
-- `26097K0043` suffix `-F-` (142799546) - 1017 variants unfiltered, 122 after quality filter
+### What the tool does
+Detects cross-sample contamination in a cohort of tumour-only panel VCFs by finding shared variants at consistent VAF ratios. Uses dual-peak log2-ratio histogram analysis to separate contamination signal (non-unity ratio) from shared germline (ratio = 1).
 
-Input VCFs are produced by the **`eggd_vep` stage** of the Uranus pipeline.
+### Input
+VCFs from the **eggd_vep** stage of the Uranus pipeline. Must have had `bcftools norm -m -any` applied (confirmed in VCF header).
 
-### Key finding: these are DIFFERENT patients, not serial samples
-Initially misinterpreted as same-patient serial marrow samples (the 40 shared variants at ratio ~0.5 looked like clonal expansion). In fact they are three different patients on the same sequencing run. The shared variants represent genuine cross-sample contamination - one patient's germline variants leaking into another's library at ~50% contamination fraction.
-
-### Sample ID format
+### Sample ID format (Uranus)
 `ACCESSION-LABID-RUN-PLATEPOS-TYPE-IDENTIFIER`
 - 26TULIP24 = sequencing run name
-- 5877 = plate position (shared across samples on same plate position??)
-- M/F = sample type (not sex)
-- 92197814 = a shared identifier (not patient-specific - possibly a panel or workflow ID)
-- Patient identity is the lab ID: 26098K0076, 26093K0005, 26097K0043
+- 5877 = shared across all samples (panel/workflow ID, NOT patient-specific)
+- M/F/U = sample type (Myeloid/FFPE/Unknown — NOT sex)
+- Patient identity = lab ID (e.g. 26098K0076)
+- 92197814 = shared identifier (NOT patient ID)
+
+### The three test VCFs are DIFFERENT patients
+Initially misinterpreted as same-patient serial samples. They are three unrelated patients on the same sequencing run (26TULIP24). The shared variants at ratio ~0.5 represent genuine cross-sample contamination, not clonal expansion.
 
 ---
 
-## Design decisions
+## Filter pipeline (final)
 
-### Why no gnomAD/synonymous/Prev_Count filter
-Cross-sample contamination consists primarily of the source patient's **germline heterozygous SNPs** (~50% VAF in source) appearing at a diluted fraction in the recipient. These variants:
-- Have population-level gnomAD AFs (0.01-0.40 typically)
-- Include synonymous, intronic, and coding variants equally
-- May be recurrent in the Uranus haem-onc cohort (high Prev_Count_AC)
-
-Testing against the 40 known contamination markers:
-- gnomAD >= 0.002: removed **35/40** (87.5%) - DEVASTATING
-- Synonymous filter: removed **19/40** (47.5%) - VERY HARMFUL
-- Prev_Count_AC > 853: removed **6/40** (15%) - harmful
-- DP < 99: removed **0/40** - safe to keep
-- AF < 0.03: removed **0/40** - safe to keep (but limits low-contam sensitivity)
-
-All annotation-based filters dropped. Only quality filters retained.
-
-### Dual-peak detection
-Without population filters, shared common germline variants between unrelated people cluster at ratio = 1 (both carry them at ~50%). This dominates the tallest histogram bin for every pair.
-
-Solution: report TWO peaks:
-1. **Overall peak** (tallest bin, typically ratio=1) - for swap/relatedness detection
-2. **Non-unity peak** (tallest bin where |log2|>0.3) - the contamination signal
-
-Flagging is based on the non-unity peak only. This ensures germline sharing cannot mask contamination.
-
-### Architecture
-1. Pre-filter: `bcftools view -f PASS | bcftools filter -e '(FORMAT/DP<99 || AF<0.03)'`
-2. Load all filtered VCFs into memory as pandas DataFrames
-3. N*(N-1)/2 pairwise comparisons (multiprocessing for >50 pairs)
-4. Dual-peak log2-ratio histogram analysis per pair
-5. Flag based on non-unity peak; report both peaks
-6. Output: summary.tsv, matrix.tsv, flagged_pairs/*.tsv, plots/*.png
-
----
-
-## Results on test data
-
-With simplified pipeline (PASS + DP>=99 + AF>=0.03, no annotation filters):
-- 120-160 variants per sample (vs 10-15 with old Uranus-mimic filters)
-- **3/3 contaminated pairs flagged** (vs 0/3 previously)
-- Non-unity peak: 13-18 variants at ratio 2:1 for each pair
-- Direction correctly identified
-- Contamination fraction correctly estimated at ~50%
-
----
-
-## VCF structure notes (Uranus eggd_vep output)
-
-- bcftools norm -m -any already applied (confirmed in header)
-- CSQ field: SYMBOL at index 1 (0-based)
-- FORMAT fields: AF (Sentieon allele fraction), DP, AD, GT
-- FILTER values: PASS, orientation, weak_evidence, clustered_events, haplotype, strand_bias, base_qual, slippage, multiallelic, map_qual
-- gnomADg_AF, gnomADe_AF, Prev_Count_AC exist as standalone String-typed INFO tags AND in CSQ
-
----
-
-## Historical note: the split-vep journey
-
-Earlier iterations tried to replicate the Uranus clinical filter pipeline exactly:
-```
-bcftools +split-vep --columns - -a CSQ -Ou -p 'CSQ_' -d | bcftools annotate -x INFO/CSQ
-bcftools filter --soft-filter EXCLUDE -m + -e '(CSQ_Prev_Count_AC>853 || ...)'
-bcftools filter -e '(FORMAT/DP<99 || AF<0.03)'
+```bash
+bcftools view -f PASS input.vcf.gz -Ou \
+| bcftools filter -e '(FORMAT/DP<99 || AF<0.03)' -Ou \
+| bcftools +split-vep --columns - -a CSQ -p CSQ_ -s worst -Ou \
+| bcftools view -e 'CSQ_gnomADg_AF>=0.40 || CSQ_gnomADe_AF>=0.40' -Oz -o out.vcf.gz
 ```
 
-This required solving several bcftools issues:
-- `CSQ_Prev_Count_AC` typed as String (split-vep has no built-in rule for it)
-- Fix: `bcftools annotate -x INFO/CSQ_Prev_Count_AC -h fix_header.hdr` to recast as Integer
-- split-vep `-c FIELDNAME` doesn't work (name collision with existing INFO tags)
-- Fix: use index ranges (`-c 1-2,24,27,31`) or CSQ_ prefix (avoids conflicts)
+### Why NOT the clinical Uranus filters
+The Uranus clinical filters (gnomAD >= 0.002, synonymous exclusion, Prev_Count_AC > 853) are designed for somatic variant reporting. They destroyed the contamination signal:
+- gnomAD >= 0.002: removed 35/40 (87.5%) contamination markers
+- Synonymous: removed 19/40 (47.5%)
+- Prev_Count_AC > 853: removed 6/40 (15%)
 
-All this became moot when we realised the clinical filters destroy the contamination signal.
+Cross-sample contamination IS germline variants from the source patient.
+
+### Why gnomAD >= 0.40 specifically
+At gnomAD AF > 0.40, many individuals are homozygous-alt (AF~1.0) while others are het (AF~0.5). This creates a false 2:1 ratio mimicking contamination. Testing: ALL 15 false-positive markers had gnomAD > 0.40; only 1/18 real markers was above 0.40.
+
+### Thresholds — all derived, not arbitrary
+| Parameter | Value | Derivation |
+|---|---|---|
+| gnomAD AF | >= 0.40 | Hom/het artefact mechanism; empirically validated |
+| Unity zone | \|log2\| <= 0.3 | Binomial noise at DP>=99: SE(log2)=0.20, captures ±1.5σ |
+| peak_count | >= 6 | Multinomial null model: P(max>=6) < 0.001/pair, <1 FP in 1128 pairs |
+| DP | >= 99 | Reliable VAF estimation |
+| AF | >= 0.03 | Minimum reportable allele fraction |
+
+### Linkage disequilibrium
+Linked germline SNPs in the same gene (e.g. 5 PRPF8 variants on one haplotype) create false clusters of 4-5 at the same ratio. The peak_count >= 6 threshold absorbs this.
 
 ---
 
-## Git log
-```
-9b59b9f  Rewrite: drop gnomAD/synonymous/Prev_Count filters, add dual-peak detection
-5f5eb86  Remove central exclusion zone from peak detection
-e0bf0e8  Specify eggd_vep as the Uranus stage that produces the input VCFs
-b57e0d2  Update README: Uranus pipeline context, VCF preconditions, pipeline steps
-d9ff92a  Match clinical split-vep command exactly: --columns -, -a CSQ, -d
-f6cd6dc  Add DP/AF quality filter to match clinical pipeline
-50344df  Fix filter pipeline: norm already applied upstream, drop that step
-7d4793f  Initial implementation of pairwise contamination screen
-```
+## 46-sample cohort results (run 26TULIP24)
+
+### Confirmed contamination
+**26098K0076 (B4) → 26093K0005 (A4)**: peak_count=17, ~50% contamination
+- Plate-adjacent (same column)
+- VerifyBamID FREEMIX: 45.5% (recipient), 13.9% (source) — bidirectional
+- Recipient has lowest coverage in cohort (451x vs median 2468x)
+- Consistent with physical mixing during library normalisation/pooling
+
+### Transitive contamination problem
+26093K0005 flagged as recipient in 13/19 pairs (all at fraction 0.50). These are NOT independent events — the contaminant's germline variants are also present as germline het in other patients, creating false 2:1 ratios. Diagnostic: one sample is recipient in many pairs at identical fraction.
+
+### Other likely real events
+- 26089K0042 (E1) → 26092K0050 (E2): plate-adjacent (same row), peak_count=8
+- 26092K0050 (E2) → 26097K0043 (C2): same column, peak_count=10
+
+### Other high-FREEMIX samples (from VerifyBamID)
+- 26105Q0012 (A1): FREEMIX=20.7% — not strongly flagged by our tool
+- 26092K0051 (H5): FREEMIX=7.0%
+
+---
+
+## Known limitations / future work
+
+- **Transitive contamination**: a heavily contaminated sample flags against many others. Mitigation strategies discussed: iterative exclusion, variant uniqueness filter, one-recipient-many-sources pattern detection, graph-based minimum explanation. None implemented yet.
+- **Bidirectional contamination**: tool reports dominant direction only. Both samples in the A4/B4 pair are contaminated by each other.
+- **Contamination > 81%**: falls inside unity zone, detected by overall peak but not flagged as non-unity contamination. Near-complete swaps are captured differently.
+- **--max-output** limits detail/plot output to top 10 flagged pairs by default.
+
+---
+
+## bcftools technical notes
+
+- `bcftools +split-vep -c FIELDNAME` fails when INFO tags with same name exist (even if String-typed). Use `--columns -` with `-p CSQ_` prefix instead.
+- `split-vep` `.*_AF` type rule assigns Float to gnomAD fields automatically.
+- `CSQ_Prev_Count_AC` gets String (no matching rule) — needs manual reheader to Integer for arithmetic. Not needed in current pipeline (Prev_Count not used).
+- Index-range notation (`-c 1-2,24,27,31`) works but name-based doesn't for these fields.
 
 ---
 
 ## Files
 ```
 ~/Documents/contamination/
-├── contamination_screen.py    Main script (~500 lines)
-├── README.md                  Usage, design, rationale
+├── contamination_screen.py    Main script (~480 lines)
+├── README.md                  Comprehensive docs with threshold derivations
 ├── MEMORY.md                  This file
+├── .gitignore                 Excludes data/results/pycache
 └── .git/
 ```
+
+GitHub: https://github.com/woook/contamination-screen (private)

@@ -337,6 +337,12 @@ manageable for large cohorts. Set `--max-output 0` to output all flagged pairs.
 - The tool is designed for **unrelated samples**. Same-patient pairs will have
   large overall peaks at ratio=1 (shared clonal mutations) which is expected and
   not flagged as contamination.
+- **Transitive contamination:** if sample Y is heavily contaminated by source Z,
+  then Y will also flag against many other samples that independently carry Z's
+  variants at germline het frequency. The diagnostic pattern is: one sample
+  appears as recipient in many flagged pairs, all at the same fraction, and is
+  never a source. The true source is the pair with the highest peak_count.
+  Consider excluding confirmed-contaminated samples and re-running.
 
 ---
 
