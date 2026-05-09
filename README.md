@@ -399,7 +399,7 @@ python3 -m venv .venv
 single MYE run from DNAnexus and prints the ready-to-run
 `contamination_screen.py` command.
 
-```
+```bash
 python dx_fetch.py PROJECT [--output DIR] [--exclude PATTERN]
                            [--yes] [--skip-archived] [--skip-existing]
                            [--dry-run]

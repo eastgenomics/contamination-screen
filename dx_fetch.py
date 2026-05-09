@@ -24,6 +24,8 @@ Exit codes:
   2  No VCF files found
 """
 
+from __future__ import annotations
+
 import argparse
 import fnmatch
 import subprocess
@@ -65,6 +67,7 @@ _MULTIQC_FOLDER_PREFS = [
 # -- Argument parsing ---------------------------------------------------------
 
 def parse_args() -> argparse.Namespace:
+    """Parse and return command-line arguments."""
     p = argparse.ArgumentParser(
         prog="dx_fetch.py",
         description=__doc__,
@@ -137,11 +140,15 @@ def find_multiqc_file(dxpy, proj_dict: list[dict], filename: str) -> dict | None
 
 # -- TBI indexing -------------------------------------------------------------
 
-def index_vcf(vcf_path: Path) -> None:
-    """Create a TBI index for a VCF.gz with bcftools index -t."""
+def index_vcf(vcf_path: Path) -> bool:
+    """Create a TBI index for a VCF.gz with bcftools index -t.
+
+    Return True if the index already exists or was created successfully.
+    Return False and print a warning if bcftools index fails.
+    """
     tbi = Path(str(vcf_path) + ".tbi")
     if tbi.exists():
-        return
+        return True
     result = subprocess.run(
         ["bcftools", "index", "-t", str(vcf_path)],
         capture_output=True,
@@ -152,6 +159,8 @@ def index_vcf(vcf_path: Path) -> None:
             f"  {result.stderr.decode().strip()}",
             file=sys.stderr,
         )
+        return False
+    return True
 
 
 # -- Output command -----------------------------------------------------------
@@ -159,6 +168,11 @@ def index_vcf(vcf_path: Path) -> None:
 def _print_command(outdir: Path, vcf_dir: Path,
                    plate_file: dict | None, freemix_file: dict | None,
                    dry_run: bool = False) -> None:
+    """Print the ready-to-run contamination_screen.py command.
+
+    Includes --plate-layout and --freemix-file only when the corresponding
+    file dicts are non-None. Appends a NOTE for each omitted optional file.
+    """
     prefix = "\n# Suggested command" + (
         " (dry run \u2014 adjust paths as needed):" if dry_run else ":"
     )
@@ -183,6 +197,13 @@ def _print_command(outdir: Path, vcf_dir: Path,
 # -- Main ---------------------------------------------------------------------
 
 def main() -> None:
+    """Authenticate, discover, download, index, and print the run command.
+
+    Orchestrates the full fetch workflow: resolves the DNAnexus project,
+    finds and filters VCF files, handles archival state, downloads VCFs and
+    MultiQC files, indexes VCFs with bcftools, then prints the
+    contamination_screen.py invocation.
+    """
     args = parse_args()
     dxpy = dx_grab.check_auth()
 
@@ -237,14 +258,17 @@ def main() -> None:
     plate_file  = find_multiqc_file(dxpy, proj_dict, _PLATE_LAYOUT_NAME)
     freemix_file = find_multiqc_file(dxpy, proj_dict, _FREEMIX_NAME)
 
-    print(f"Plate layout: "
-          + (f"{plate_file['folder']}/{plate_file['name']}  "
-             f"({dx_grab.fmt_size(plate_file['size'])})"
-             if plate_file else f"NOT FOUND ({_PLATE_LAYOUT_NAME!r})"))
-    print(f"FREEMIX data: "
-          + (f"{freemix_file['folder']}/{freemix_file['name']}  "
-             f"({dx_grab.fmt_size(freemix_file['size'])})"
-             if freemix_file else f"NOT FOUND ({_FREEMIX_NAME!r})"))
+    if plate_file:
+        print(f"Plate layout: {plate_file['folder']}/{plate_file['name']}  "
+              f"({dx_grab.fmt_size(plate_file['size'])})")
+    else:
+        print(f"Plate layout: NOT FOUND ({_PLATE_LAYOUT_NAME!r})")
+
+    if freemix_file:
+        print(f"FREEMIX data: {freemix_file['folder']}/{freemix_file['name']}  "
+              f"({dx_grab.fmt_size(freemix_file['size'])})")
+    else:
+        print(f"FREEMIX data: NOT FOUND ({_FREEMIX_NAME!r})")
 
     if args.dry_run:
         print("\nDry run \u2014 nothing downloaded.")
@@ -307,13 +331,20 @@ def main() -> None:
 
     # --- Done ----------------------------------------------------------------
 
-    n_ready = sum(1 for f in vcf_files
-                  if (vcf_dir / f["name"]).exists())
+    n_ready = sum(
+        1 for f in vcf_files
+        if (vcf_dir / f["name"]).exists()
+        and Path(str(vcf_dir / f["name"]) + ".tbi").exists()
+    )
     n_skipped = len(vcf_files) - n_ready
     print(f"\nDone. {n_ready} VCF(s) ready"
           + (f"  ({n_skipped} skipped/archived)" if n_skipped else "") + ".")
 
-    _print_command(outdir, vcf_dir, plate_file, freemix_file)
+    # Only include MultiQC args in the command if the files are actually present
+    # locally — they may have been skipped if archived and --skip-archived was set.
+    plate_ready   = plate_file   if (outdir / _PLATE_LAYOUT_NAME).exists() else None
+    freemix_ready = freemix_file if (outdir / _FREEMIX_NAME).exists()      else None
+    _print_command(outdir, vcf_dir, plate_ready, freemix_ready)
 
 
 if __name__ == "__main__":
