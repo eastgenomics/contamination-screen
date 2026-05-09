@@ -139,6 +139,21 @@ def parse_args() -> argparse.Namespace:
         "--verbose", "-v", action="store_true",
         help="Enable debug logging",
     )
+    p.add_argument(
+        "--freemix-file", type=Path, default=None,
+        metavar="FILE",
+        help="Path to a MultiQC VerifyBamID output file (multiqc_verifybamid.txt) "
+             "containing per-sample FREEMIX values. When provided, a pair is only "
+             "flagged if the recipient's FREEMIX >= --freemix-threshold. "
+             "The recipient_freemix column is always written to summary.tsv "
+             "when this file is supplied, regardless of threshold.",
+    )
+    p.add_argument(
+        "--freemix-threshold", type=float, default=0.15,
+        metavar="FRAC",
+        help="Minimum recipient FREEMIX fraction (0–1) required for flagging "
+             "when --freemix-file is provided (default: %(default)s = 15%%).",
+    )
     return p.parse_args()
 
 
@@ -541,28 +556,74 @@ def _worker(args_tuple: tuple) -> dict:
 
 # -- Output writers -----------------------------------------------------------
 
+def _load_freemix(freemix_file: Path) -> dict:
+    """Load a MultiQC multiqc_verifybamid.txt file.
+
+    Returns a dict mapping sample name -> FREEMIX fraction (0–1).
+    Handles both raw VerifyBamID output and MultiQC-aggregated format;
+    expects columns 'Sample' and 'FREEMIX'.
+    """
+    df = pd.read_csv(freemix_file, sep="\t")
+    if "Sample" not in df.columns or "FREEMIX" not in df.columns:
+        raise ValueError(
+            f"--freemix-file {freemix_file}: expected columns 'Sample' and 'FREEMIX', "
+            f"got {list(df.columns)}"
+        )
+    df = df.drop_duplicates("Sample")
+    logging.info("Loaded FREEMIX data for %d samples from %s",
+                 len(df), freemix_file.name)
+    return dict(zip(df["Sample"], df["FREEMIX"]))
+
+
 def _apply_flags(
     results: List[dict],
     min_shared: int,
     peak_count_thresh: int,
     n_shared_z_thresh: float,
+    freemix: Optional[dict] = None,
+    freemix_threshold: float = 0.15,
 ) -> pd.DataFrame:
     """Convert results to DataFrame and flag pairs based on NON-UNITY peak.
 
-    Flagging requires both:
+    Flagging requires all of:
+      - n_shared >= min_shared
       - peak_count >= peak_count_thresh
-      - n_shared_z > n_shared_z_thresh  (global z-score across all pairs)
+      - n_shared_z >= n_shared_z_thresh  (within-run z-score of n_shared)
+      - recipient FREEMIX >= freemix_threshold  (only when freemix dict supplied)
     """
     df = pd.DataFrame(results)
-    # Global z-score of n_shared across all pairs in this run
+    # Within-run z-score of n_shared across all pairs in this cohort
     n_mean = df["n_shared"].mean()
     n_std  = df["n_shared"].std()
     df["n_shared_z"] = (df["n_shared"] - n_mean) / n_std if n_std > 0 else 0.0
-    df["flagged"] = (
+
+    base_flag = (
         (df["n_shared"] >= min_shared) &
         (df["peak_count"] >= peak_count_thresh) &
-        (df["n_shared_z"] > n_shared_z_thresh)
+        (df["n_shared_z"] >= n_shared_z_thresh)
     )
+
+    if freemix is not None:
+        # Add recipient FREEMIX column (fraction 0–1) for all pairs
+        df["recipient_freemix"] = df["contamination_recipient"].map(freemix)
+        freemix_flag = df["recipient_freemix"] >= freemix_threshold
+        n_missing = df.loc[base_flag, "recipient_freemix"].isna().sum()
+        if n_missing:
+            logging.warning(
+                "%d pair(s) pass peak/z thresholds but have no FREEMIX data "
+                "for their recipient — FREEMIX condition treated as not met.",
+                n_missing,
+            )
+        df["flagged"] = base_flag & freemix_flag.fillna(False)
+        logging.info(
+            "FREEMIX filter applied (threshold >= %.0f%%): "
+            "%d/%d base-flagged pairs retained",
+            freemix_threshold * 100,
+            df["flagged"].sum(), base_flag.sum(),
+        )
+    else:
+        df["flagged"] = base_flag
+
     for col in ["overall_log2", "overall_ratio", "overall_fraction",
                 "peak_log2_ratio", "peak_ratio",
                 "peak_fraction", "contamination_fraction"]:
@@ -841,11 +902,18 @@ def main() -> None:
     # -- Phase 4: Flag and write outputs --------------------------------------
     logging.info("Phase 4: Writing outputs...")
 
+    # Load FREEMIX data if supplied
+    freemix_data = None
+    if args.freemix_file is not None:
+        freemix_data = _load_freemix(args.freemix_file)
+
     summary_df = _apply_flags(
         raw_results,
         min_shared=args.min_shared,
         peak_count_thresh=args.peak_count,
         n_shared_z_thresh=args.n_shared_z,
+        freemix=freemix_data,
+        freemix_threshold=args.freemix_threshold,
     )
     write_summary(summary_df, args.outdir)
     # Determine matrix ordering

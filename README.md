@@ -232,7 +232,7 @@ A pair is flagged when **all three** conditions are met:
 - `n_shared >= --min-shared` (default 10) — enough shared variants to assess
 - `peak_count >= --peak-count` (default 10) — the non-unity peak contains a
   statistically significant cluster of variants at a consistent non-unity ratio
-- `n_shared_z > --n-shared-z` (default 2.0) — the pair shares more variants
+- `n_shared_z >= --n-shared-z` (default 2.0) — the pair shares more variants
   than typical within this run (within-run z-score of `n_shared`)
 
 The `n_shared_z` criterion adds a second, independent line of evidence:
@@ -312,6 +312,38 @@ though Y is a recipient. This is the transitive artefact.
 flagged pairs at a consistent fraction, and also appears spuriously as source
 in a small number of lower-confidence pairs. The true primary event is the pair
 with the highest `peak_count` and `n_shared_z` involving the recipient sample.
+
+### 3. Bone marrow chimerism (post-transplant samples)
+
+Patients who have undergone allogeneic haematopoietic stem cell transplantation
+(HSCT) have mixed donor/recipient DNA in their blood. This produces a signal
+that is **mechanistically identical** to cross-sample contamination: the donor's
+germline heterozygous variants appear at ~50% VAF alongside the patient's own
+variants, giving a consistent non-unity log2-ratio peak at every pair comparison
+between the chimeric sample and any other sample on the run.
+
+The tool cannot distinguish bone marrow chimerism from true cross-sample
+contamination using VCF data alone. Clinical context (transplant history) is
+required.
+
+**Diagnostic features:**
+- The chimeric sample appears as recipient against many (often most) other
+  samples on the run, all at contamination_fraction ≈ 0.5
+- The signal is **reproducible across multiple sequencing runs** of the same
+  patient — chimerism is a biological property of the sample, not a run-level
+  artefact
+- VerifyBamID FREEMIX will be elevated (typically 40–50%), reflecting the
+  mixed DNA — this is the correct result, not a false positive by VerifyBamID
+- The 'source' samples identified by the tool will be unrelated patients who
+  happen to share common germline variants with the donor genome
+
+**Known examples (retrospective 100-run cohort):**
+- `25351K0007` — flags in RUN034 (26NGSHO2) and RUN037 (25NGSHO77); same
+  patient sequenced twice, same signal reproduced at ~50% fraction both times
+- `25238K0026` — same runs, same mechanism
+
+These samples are listed in `retrospective/known_contaminated_samples.tsv`
+alongside confirmed true contamination events.
 
 ---
 
