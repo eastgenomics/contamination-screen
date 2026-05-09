@@ -124,6 +124,7 @@ def find_multiqc_file(dxpy, proj_dict: list[dict], filename: str) -> dict | None
         return candidates[0]
 
     def _rank(f: dict) -> int:
+        """Return folder preference rank; lower is preferred."""
         folder = f["folder"].lower()
         for i, pat in enumerate(_MULTIQC_FOLDER_PREFS):
             if fnmatch.fnmatch(folder, pat):
@@ -282,6 +283,7 @@ def main() -> None:
         f["local_path"] = str(vcf_dir / f["name"])
 
     def _dl_vcfs(batch):
+        """Download a batch of VCFs to vcf_dir."""
         dx_grab.download_files(dxpy, batch, str(vcf_dir),
                                skip_existing=args.skip_existing)
 
@@ -315,6 +317,7 @@ def main() -> None:
             f["local_path"] = str(outdir / f["name"])
 
         def _dl_multiqc(batch):
+            """Download a batch of MultiQC files to outdir."""
             dx_grab.download_files(dxpy, batch, str(outdir),
                                    skip_existing=args.skip_existing)
 

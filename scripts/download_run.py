@@ -10,6 +10,7 @@ import dxpy
 
 
 def main():
+    """Download and index VCFs for one retrospective run using anonymised IDs."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--run",           required=True,  help="e.g. RUN001")
     parser.add_argument("--mapping",       required=True,  help="Path to mapping TSV")
