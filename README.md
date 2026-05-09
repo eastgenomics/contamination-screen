@@ -380,6 +380,7 @@ background VerifyBamID noise in this panel type.
 - `bcftools` >= 1.14 with `split-vep` plugin
 - `pandas` and `numpy`
 - `matplotlib` (optional, for `--plots`)
+- `dxpy` (optional, for `dx_fetch.py` — fetching from DNAnexus)
 
 Input VCFs must be bgzipped (`.vcf.gz`) and tabix-indexed (`.vcf.gz.tbi`).
 
@@ -389,8 +390,55 @@ Input VCFs must be bgzipped (`.vcf.gz`) and tabix-indexed (`.vcf.gz.tbi`).
 git clone <repo>
 cd contamination-screen
 python3 -m venv .venv
-.venv/bin/pip install pandas numpy matplotlib
+.venv/bin/pip install pandas numpy matplotlib dxpy
 ```
+
+## Fetching data from DNAnexus
+
+`dx_fetch.py` is a precursor helper that downloads everything needed for a
+single MYE run from DNAnexus and prints the ready-to-run
+`contamination_screen.py` command.
+
+```
+python dx_fetch.py PROJECT [--output DIR] [--exclude PATTERN]
+                           [--yes] [--skip-archived] [--skip-existing]
+                           [--dry-run]
+```
+
+`PROJECT` may be a project ID (`project-xxx...`), an exact project name, or a
+glob pattern (e.g. `002_260423*MYE`) that must resolve to exactly one project.
+
+Downloads into `<output>/` (default: `./<project_name>/`):
+
+| Path | Contents |
+|---|---|
+| `vcfs/*.vcf.gz` + `*.tbi` | eggd_vep annotated VCFs, one per sample |
+| `multiqc_general_stats.txt` | Plate well positions (for `--plate-layout`) |
+| `multiqc_verifybamid.txt` | VerifyBamID FREEMIX values (for `--freemix-file`) |
+
+Control samples (specimen IDs containing `Q`, e.g. `26Q98K0076`) are excluded
+by default. Pass `--no-exclude-controls` to override.
+
+```bash
+# List what would be downloaded (no download)
+python dx_fetch.py '002_260423*MYE' --dry-run
+
+# Download — output defaults to ./002_260423_A01303_0760_AHLTLCDRX7_MYE/
+python dx_fetch.py '002_260423*MYE'
+
+# Explicit output directory
+python dx_fetch.py project-BQbJpBj0bvyZqK7XG00yEv4Q --output ./run_data/
+
+# Non-interactive: skip archived VCFs automatically
+python dx_fetch.py '002_260423*MYE' --skip-archived
+
+# Non-interactive: submit unarchive requests and wait
+python dx_fetch.py '002_260423*MYE' --yes
+```
+
+On success, `dx_fetch.py` prints the `contamination_screen.py` command to run,
+with `--plate-layout` and `--freemix-file` automatically filled in if those
+files were found.
 
 ## Usage
 
