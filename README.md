@@ -408,7 +408,7 @@ contamination_screen.py VCF_DIR [options]
 | `--min-dp` | `99` | Minimum read depth |
 | `--min-shared` | `10` | Minimum shared variants to assess a pair |
 | `--peak-count` | `10` | Flag if non-unity peak has >= N variants |
-| `--n-shared-z` | `2.0` | Flag only if within-run n_shared z-score exceeds this (combined with `--peak-count`) |
+| `--n-shared-z` | `2.0` | Flag only if within-run n_shared z-score is at least this value (combined with `--peak-count`) |
 | `--threads / -t` | `min(8, nCPU)` | Parallel threads |
 | `--include-non-pass` | off | Include non-PASS variants |
 | `--plots` | off | Generate histogram plots for flagged pairs |
@@ -416,6 +416,9 @@ contamination_screen.py VCF_DIR [options]
 | `--force-refilter` | off | Regenerate filtered VCFs |
 | `--bin-width` | `0.2` | Histogram bin width (log2 units) |
 | `--vcf-glob` | `*_annotated.vcf.gz` | File matching pattern |
+| `--plate-layout` | _none_ | MultiQC general-stats file; orders matrix by plate well position (column-major) |
+| `--freemix-file` | _none_ | MultiQC `multiqc_verifybamid.txt`; adds `recipient_freemix` column to summary and gates flagging |
+| `--freemix-threshold` | `0.15` | Minimum recipient FREEMIX fraction (0–1) required to flag when `--freemix-file` is provided |
 | `--verbose / -v` | off | Debug logging |
 
 ### Examples
@@ -468,13 +471,13 @@ Without `--plate-layout`, samples are ordered by input filename.
 | `contamination_source` | Source sample (higher VAF) |
 | `contamination_recipient` | Recipient sample (diluted VAF) |
 | `contamination_fraction` | Estimated fraction of recipient library from source |
-| `flagged` | TRUE if meets all three thresholds (n_shared, peak_count, n_shared_z) |
+| `flagged` | TRUE if all of n_shared, peak_count, n_shared_z thresholds are met; and recipient FREEMIX ≥ `--freemix-threshold` when `--freemix-file` is supplied |
 
 ---
 
 ## Interpretation
 
-- **Flagged pair (peak_count ≥ 10, n_shared_z > 2.0):** strong evidence of
+- **Flagged pair (peak_count ≥ 10, n_shared_z ≥ 2.0):** strong evidence of
   cross-sample contamination at the implied fraction. Direction indicates which
   sample is the source. The peak_count reflects how many independent genomic
   loci confirm the signal; n_shared_z confirms the pair shares more variants
@@ -531,7 +534,7 @@ scripts. Key findings:
 |---|---|
 | Runs screened | 100 |
 | Total pairwise comparisons | 97,310 |
-| Flagged pairs (peak_count ≥ 10, n_shared_z > 2.0) | 128 |
+| Flagged pairs (peak_count ≥ 10, n_shared_z ≥ 2.0) | 128 |
 | Runs with ≥ 1 flagged pair | 43 / 100 |
 | Strongest signal | peak_count=28, n_shared_z=13.4 (RUN049) |
 

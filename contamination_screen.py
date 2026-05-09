@@ -94,9 +94,10 @@ def parse_args() -> argparse.Namespace:
     )
     p.add_argument(
         "--n-shared-z", type=float, default=2.0,
-        help="Flag a pair only if the global z-score of n_shared exceeds this "
-             "threshold (computed across all pairs in the run). Combined with "
-             "--peak-count: both conditions must be met. (default: %(default)s)",
+        help="Flag a pair only if the within-run z-score of n_shared meets or "
+             "exceeds this threshold (computed across all pairs in the run). "
+             "Combined with --peak-count: both conditions must be met. "
+             "(default: %(default)s)",
     )
     p.add_argument(
         "--threads", "-t", type=int, default=min(8, os.cpu_count() or 1),
