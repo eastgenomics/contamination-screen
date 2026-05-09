@@ -88,12 +88,15 @@ def parse_args() -> argparse.Namespace:
              "assessing a pair (default: %(default)s)",
     )
     p.add_argument(
-        "--peak-count", type=int, default=6,
+        "--peak-count", type=int, default=10,
         help="Flag a pair if the non-unity peak contains >= this many "
-             "variants. Derived from null model: under uniform distribution "
-             "of ~20 variants across 37 non-unity bins, P(max>=6) < 0.001 "
-             "per pair, giving <1 expected false positive for cohorts up to "
-             "~100 samples. (default: %(default)s)",
+             "variants (default: %(default)s)",
+    )
+    p.add_argument(
+        "--n-shared-z", type=float, default=2.0,
+        help="Flag a pair only if the global z-score of n_shared exceeds this "
+             "threshold (computed across all pairs in the run). Combined with "
+             "--peak-count: both conditions must be met. (default: %(default)s)",
     )
     p.add_argument(
         "--threads", "-t", type=int, default=min(8, os.cpu_count() or 1),
@@ -175,6 +178,22 @@ def _drain_stderr(stream, collector: list) -> None:
     collector.append(stream.read())
 
 
+def _csq_gnomad_fields(src: Path) -> List[str]:
+    """
+    Return which gnomAD AF subfields are present in the CSQ format string
+    of this VCF. Runs bcftools +split-vep --list and filters for known names.
+    """
+    result = subprocess.run(
+        ["bcftools", "+split-vep", "-l", str(src)],
+        capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        return []
+    available = {line.split("\t")[1] for line in result.stdout.strip().splitlines()
+                 if "\t" in line}
+    return [f for f in ("gnomADg_AF", "gnomADe_AF") if f in available]
+
+
 def filter_vcf(src: Path, dst: Path, pass_only: bool, min_dp: int,
                min_af: float, max_gnomad: float) -> None:
     """
@@ -195,10 +214,10 @@ def filter_vcf(src: Path, dst: Path, pass_only: bool, min_dp: int,
              gnomAD AF fields, enabling arithmetic filtering in the next step.
 
       4. bcftools view -e 'CSQ_gnomADg_AF>=T || CSQ_gnomADe_AF>=T'
-             Remove very common variants (gnomAD AF >= threshold). At high
-             population frequencies (>0.40), individuals can be homozygous-alt
-             (AF~1.0) or heterozygous (AF~0.5), producing a 2:1 ratio that
-             mimics contamination. This is the only population-frequency filter.
+             Remove very common variants (gnomAD AF >= threshold). Only fields
+             present in the VCF's CSQ format string are used; if neither
+             gnomADg_AF nor gnomADe_AF is present this step is skipped with a
+             warning (older VEP annotations may lack gnomAD genomes AF).
     """
     cmd1 = ["bcftools", "view", str(src)]
     if pass_only:
@@ -222,7 +241,16 @@ def filter_vcf(src: Path, dst: Path, pass_only: bool, min_dp: int,
 
     cmd4 = ["bcftools", "view"]
     if max_gnomad < 1.0:
-        cmd4 += ["-e", f"CSQ_gnomADg_AF>={max_gnomad} || CSQ_gnomADe_AF>={max_gnomad}"]
+        gnomad_fields = _csq_gnomad_fields(src)
+        if gnomad_fields:
+            clause = " || ".join(f"CSQ_{f}>={max_gnomad}" for f in gnomad_fields)
+            cmd4 += ["-e", clause]
+            logging.debug("gnomAD filter using: %s", clause)
+        else:
+            logging.warning(
+                "%s: no gnomAD AF fields found in CSQ — skipping gnomAD filter",
+                src.name,
+            )
     cmd4 += ["-Oz", "-o", str(dst)]
 
     logging.debug("Filter pipeline for %s", src.name)
@@ -517,12 +545,23 @@ def _apply_flags(
     results: List[dict],
     min_shared: int,
     peak_count_thresh: int,
+    n_shared_z_thresh: float,
 ) -> pd.DataFrame:
-    """Convert results to DataFrame and flag pairs based on NON-UNITY peak."""
+    """Convert results to DataFrame and flag pairs based on NON-UNITY peak.
+
+    Flagging requires both:
+      - peak_count >= peak_count_thresh
+      - n_shared_z > n_shared_z_thresh  (global z-score across all pairs)
+    """
     df = pd.DataFrame(results)
+    # Global z-score of n_shared across all pairs in this run
+    n_mean = df["n_shared"].mean()
+    n_std  = df["n_shared"].std()
+    df["n_shared_z"] = (df["n_shared"] - n_mean) / n_std if n_std > 0 else 0.0
     df["flagged"] = (
         (df["n_shared"] >= min_shared) &
-        (df["peak_count"] >= peak_count_thresh)
+        (df["peak_count"] >= peak_count_thresh) &
+        (df["n_shared_z"] > n_shared_z_thresh)
     )
     for col in ["overall_log2", "overall_ratio", "overall_fraction",
                 "peak_log2_ratio", "peak_ratio",
@@ -806,6 +845,7 @@ def main() -> None:
         raw_results,
         min_shared=args.min_shared,
         peak_count_thresh=args.peak_count,
+        n_shared_z_thresh=args.n_shared_z,
     )
     write_summary(summary_df, args.outdir)
     # Determine matrix ordering

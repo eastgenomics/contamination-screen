@@ -6,3 +6,11 @@ credit_*.md
 MEMORY.md
 presentation/
 memory/
+.venv/
+retrospective/results/
+retrospective/all_vcfs.json
+retrospective/selected_vcfs.json
+retrospective/vcfs_2025.json
+retrospective/vcfs_2026.json
+retrospective/multiqc/
+*.log

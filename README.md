@@ -10,6 +10,11 @@ designed for targeted haematological oncology panel sequencing data processed by
 the **Uranus clinical pipeline** (CUH Bioinformatics), using VCFs output by the
 **eggd_vep** stage.
 
+Validated on a retrospective cohort of 100 consecutive haematological oncology
+sequencing runs (97,310 pairwise comparisons, ~4,400 samples). With default
+thresholds (`--peak-count 10`, `--n-shared-z 2.0`), 128 pairs were flagged
+across 43 runs.
+
 ## Expected input VCFs
 
 Input VCFs must have been produced by the Uranus pipeline eggd_vep stage.
@@ -94,7 +99,7 @@ This exactly mimics 50% contamination and produces false positives.
 - Hom/het pairings still occur but at lower frequency; and at gnomAD AF 0.26–0.30,
   linked variants in the same gene (e.g. 5 PRPF8 SNPs on the same haplotype) can
   cluster at a single ratio. However, these linked clusters typically produce
-  peak_count = 4–5 which is below the flagging threshold of 6.
+  peak_count = 4–5 which is below the flagging threshold of 10.
 
 The threshold is configurable with `--max-gnomad` (set to 1.0 to disable).
 
@@ -191,43 +196,149 @@ SYMBOL) into properly-typed INFO tags, enabling the arithmetic comparison in
 the final step. It uses `-s worst` (single worst-consequence transcript per
 variant) to avoid duplicate records.
 
-### Flagging threshold: `--peak-count` (default 6)
+#### VEP configuration versions and gnomAD field availability
 
-A pair is flagged when:
+The gnomAD filter step uses whichever gnomAD AF fields are present in the VCF's
+CSQ format string. Two configurations have been observed in Uranus pipeline
+output:
+
+| VEP config | gnomAD fields in CSQ | Runs (100-run cohort) | Approximate date boundary |
+|---|---|---|---|
+| Newer (eggd_vep ≥ v1.3) | `gnomADg_AF` + `gnomADe_AF` | RUN001–070 | Aug 2025 onwards |
+| Older (eggd_vep < v1.3) | `gnomADe_AF` only | RUN071–100 | Before Aug 2025 |
+
+The tool detects which fields are present at runtime using
+`bcftools +split-vep -l` and builds the filter expression accordingly. If
+neither field is present a warning is logged and the gnomAD step is skipped.
+
+**Impact on `n_shared`:** runs annotated with the older VEP config produce
+systematically fewer shared variants per pair (median `n_shared` ≈ 8) compared
+to newer-config runs (median ≈ 18–20). This difference arises because
+`gnomADe_AF` (exome-derived) assigns higher AF estimates to many coding variants
+than `gnomADg_AF` (genome-derived), causing the older config to remove more
+variants at the AF ≥ 0.40 threshold. The global SD for each group is internally
+consistent (SD ≈ 4.9 for newer runs, SD ≈ 2.9 for older runs), but the two
+populations cannot be pooled for z-scoring.
+
+As a consequence, **`n_shared` z-scores are always computed within a single run**
+(the default behaviour) rather than against a cross-run global distribution. A
+global mean/SD blends the two VEP-config populations and produces z-scores that
+are systematically biased in both directions.
+
+### Dual flagging threshold: `peak_count` and `n_shared_z`
+
+A pair is flagged when **all three** conditions are met:
 
 - `n_shared >= --min-shared` (default 10) — enough shared variants to assess
-- **AND** `peak_count >= --peak-count` (default 6) — the non-unity peak has a
-  statistically significant cluster
+- `peak_count >= --peak-count` (default 10) — the non-unity peak contains a
+  statistically significant cluster of variants at a consistent non-unity ratio
+- `n_shared_z > --n-shared-z` (default 2.0) — the pair shares more variants
+  than typical within this run (within-run z-score of `n_shared`)
 
-**Derivation from null model:**
+The `n_shared_z` criterion adds a second, independent line of evidence:
+contamination increases the number of detectable shared variants between a pair
+(the source's variants appear in the recipient), so contaminated pairs have
+elevated `n_shared` relative to clean pairs from the same run. Using both
+criteria simultaneously substantially reduces false positives from linkage
+disequilibrium and somatic LOH artefacts (see Known false positives below).
 
-Under the null hypothesis (no contamination), variants that fall outside the
-unity zone are scattered across the non-unity region with no systematic
-clustering. With a bin width of 0.2 log2 units and a total range of ±4 log2,
-there are 37 non-unity bins. If k variants are distributed uniformly across
-these 37 bins, the probability that the tallest bin reaches a given count
-follows the maximum of a multinomial distribution.
+**`n_shared_z` is computed within each run** across all pairwise comparisons in
+that cohort. It is stored in `summary.tsv` and can be inspected independently of
+the flagging decision.
 
-Monte Carlo simulation (100,000 iterations, ~20 non-unity variants per pair):
+**Relationship between `peak_count` and `n_shared_z`:**
 
-| Threshold | P(exceed) per pair | Expected FP in 1128 pairs (48 samples) |
-|---|---|---|
-| >= 4 | 0.035 | 39.5 |
-| >= 5 | 0.006 | 6.8 |
-| >= 6 | 0.0004 | 0.4 |
-| >= 7 | 0.00001 | 0.01 |
-| >= 8 | ~0 | ~0 |
+In the 100-run retrospective cohort (Pearson r within the 5–50% FREEMIX band):
+- r(FREEMIX, peak_count) = 0.639
+- r(FREEMIX, n_shared_z) = 0.569
 
-The default of **6** gives < 1 expected false positive for cohorts up to ~100
-samples. For larger cohorts (96+ samples, 4560+ pairs), increase to 7.
+Both metrics track the same underlying event, but `peak_count` is more
+sensitive to the directionality of the signal (ratio clustering) while
+`n_shared_z` reflects the magnitude of variant sharing.
 
 **Linkage disequilibrium consideration:** Multiple variants in the same gene on
 the same haplotype are not independent — they share the same genotype and
 produce the same ratio. In testing, linked germline SNPs (e.g. 5 PRPF8 variants
-on one haplotype) created false clusters of 4–5 variants at the same ratio.
-The threshold of 6 absorbs this because linked clusters from a single gene
-typically contribute ≤ 5 correlated variants, while genuine contamination
-produces markers from many independent genomic loci.
+on one haplotype) created false peak_count clusters of 4–5. These typically have
+normal `n_shared_z` because the total number of shared variants is not elevated.
+The dual threshold removes them: genuine contamination produces elevated signals
+on both metrics simultaneously.
+
+---
+
+## Known false positive patterns
+
+### 1. Somatic LOH / homozygous tumour variants at cancer gene loci
+
+Tumour-only VCFs from high-purity haematological cancers can generate a
+systematic false positive. If a patient has acquired homozygous somatic variants
+(or loss of heterozygosity) at positions in cancer driver genes (BRAF, FLT3,
+TET2, PRPF8, JAK1, etc.), these appear at AF ≈ 1.0 in their VCF. An unrelated
+patient who is heterozygous germline at the same positions will have AF ≈ 0.5.
+The ratio log2(0.5/1.0) = −1.0 appears for every such position, producing a
+peak at exactly −1.0 that exactly mimics 50% contamination.
+
+**Diagnostic features of this artefact:**
+- `peak_log2_ratio` is exactly −1.0 (or +1.0) for virtually every pair involving
+  the affected sample
+- The same sample appears as "source" against many unrelated samples on the run,
+  all at contamination_fraction = 0.5
+- VerifyBamID FREEMIX is normal (~0.1–0.7%) for both samples — the BAM contains
+  no foreign DNA
+- In-peak variants cluster in haematological cancer driver genes
+- In-peak variant AF in the "source" sample is ≈ 1.0 (homozygous), not ≈ 0.5
+  (germline het)
+
+The `n_shared_z` threshold provides partial protection: these artefact pairs
+tend to have elevated `n_shared` because the homozygous tumour variants appear
+in many paired samples, but the effect is run-wide rather than targeted, making
+the z-score moderate rather than extreme. Definitive diagnosis requires inspecting
+the variant-level detail TSV.
+
+The gnomAD ≥ 0.40 filter removes the common-germline version of this artefact
+(where both genotypes are population-common), but somatic variants at cancer
+gene positions with population AF < 0.40 are not filtered and remain a source
+of false positives.
+
+### 2. Transitive contamination
+
+If sample Y is heavily contaminated by source Z (~50% contamination), Y now
+carries Z's variants at ~25% VAF. When Y is compared to other samples that
+independently carry Z's variants at germline het frequency (~50%), the
+contamination screen may flag Y as a "source" contaminating those samples, even
+though Y is a recipient. This is the transitive artefact.
+
+**Diagnostic pattern:** one sample appears as recipient in many high-confidence
+flagged pairs at a consistent fraction, and also appears spuriously as source
+in a small number of lower-confidence pairs. The true primary event is the pair
+with the highest `peak_count` and `n_shared_z` involving the recipient sample.
+
+---
+
+## Correlation with VerifyBamID FREEMIX
+
+VerifyBamID FREEMIX estimates cross-individual contamination from the BAM at
+germline SNP positions. In the 100-run cohort (1,432 samples with both metrics):
+
+| FREEMIX band | % also flagged by contamination screen |
+|---|---|
+| < 5% | ~14% |
+| 5–25% | ~8% |
+| > 25% | **89%** |
+
+The two tools are **complementary, not redundant:**
+
+- VerifyBamID detects recipients sensitively but cannot identify the source,
+  quantify the fraction, or distinguish primary from transitive events
+- The contamination screen identifies direction (source → recipient), estimates
+  the fraction, and surfaces the primary event — but requires a clustering
+  signal that may be absent at low contamination levels (< ~5% FREEMIX)
+- **Sources** have near-normal FREEMIX (~0.3% median) because their own library
+  is clean; the contamination signal is in their victim
+
+Samples with FREEMIX > 5% but not flagged by the contamination screen are either
+genuine low-level contamination events below the detection threshold, or reflect
+background VerifyBamID noise in this panel type.
 
 ---
 
@@ -244,8 +355,9 @@ Input VCFs must be bgzipped (`.vcf.gz`) and tabix-indexed (`.vcf.gz.tbi`).
 
 ```bash
 git clone <repo>
-cd contamination
-pip install pandas numpy matplotlib
+cd contamination-screen
+python3 -m venv .venv
+.venv/bin/pip install pandas numpy matplotlib
 ```
 
 ## Usage
@@ -263,7 +375,8 @@ contamination_screen.py VCF_DIR [options]
 | `--min-af` | `0.03` | VAF floor applied during pre-filtering |
 | `--min-dp` | `99` | Minimum read depth |
 | `--min-shared` | `10` | Minimum shared variants to assess a pair |
-| `--peak-count` | `6` | Flag if non-unity peak has >= N variants (statistically derived; see above) |
+| `--peak-count` | `10` | Flag if non-unity peak has >= N variants |
+| `--n-shared-z` | `2.0` | Flag only if within-run n_shared z-score exceeds this (combined with `--peak-count`) |
 | `--threads / -t` | `min(8, nCPU)` | Parallel threads |
 | `--include-non-pass` | off | Include non-PASS variants |
 | `--plots` | off | Generate histogram plots for flagged pairs |
@@ -281,10 +394,10 @@ python contamination_screen.py /data/vcfs/ --outdir results/ --plots
 
 # More sensitive (smaller panels or lower contamination)
 python contamination_screen.py /data/vcfs/ \
-    --min-shared 5 --peak-count 5 --outdir results_sensitive/
+    --min-shared 5 --peak-count 8 --n-shared-z 1.5 --outdir results_sensitive/
 
 # Larger cohorts (96+ samples)
-python contamination_screen.py /data/vcfs/ --peak-count 7
+python contamination_screen.py /data/vcfs/ --peak-count 10 --n-shared-z 2.0
 ```
 
 ---
@@ -307,9 +420,8 @@ manageable for large cohorts. Set `--max-output 0` to output all flagged pairs.
 
 If `--plate-layout` is provided, the matrix rows and columns are ordered by
 plate position (column-major: A1, B1...H1, A2, B2...up to the last column),
-making adjacent-well
-contamination appear as non-zero entries near the diagonal. Without
-`--plate-layout`, samples are ordered by input filename.
+making adjacent-well contamination appear as non-zero entries near the diagonal.
+Without `--plate-layout`, samples are ordered by input filename.
 
 ### `summary.tsv` columns
 
@@ -317,55 +429,88 @@ contamination appear as non-zero entries near the diagonal. Without
 |---|---|
 | `sample_a`, `sample_b` | Sample pair |
 | `n_shared` | Total shared variants (after all quality + gnomAD filters) |
+| `n_shared_z` | Within-run z-score of `n_shared` across all pairs in this cohort |
 | `overall_log2`, `overall_count`, `overall_fraction` | Tallest peak across full range (usually ratio=1 from germline sharing) |
 | `peak_log2_ratio`, `peak_ratio` | Non-unity peak centre (the contamination signal) |
 | `peak_count`, `peak_fraction` | Strength of non-unity peak |
 | `contamination_source` | Source sample (higher VAF) |
 | `contamination_recipient` | Recipient sample (diluted VAF) |
 | `contamination_fraction` | Estimated fraction of recipient library from source |
-| `flagged` | TRUE if meets thresholds |
+| `flagged` | TRUE if meets all three thresholds (n_shared, peak_count, n_shared_z) |
 
 ---
 
 ## Interpretation
 
-- **Non-unity peak with peak_count >= 6:** cross-sample contamination at the
-  implied fraction. Direction indicates which sample is the source. The peak_count
-  reflects how many independent genomic loci confirm the signal.
+- **Flagged pair (peak_count ≥ 10, n_shared_z > 2.0):** strong evidence of
+  cross-sample contamination at the implied fraction. Direction indicates which
+  sample is the source. The peak_count reflects how many independent genomic
+  loci confirm the signal; n_shared_z confirms the pair shares more variants
+  than typical for this run.
 - **Large overall peak at ratio=1:** many variants shared at similar VAF. In
   unrelated samples this suggests a sample swap or duplicate; in related samples
   (same patient) it reflects shared biology.
-- **Non-unity peak_count of 4-5:** borderline — may represent linked germline
-  variants (e.g. multiple SNPs in one gene on the same haplotype) rather than
-  true contamination. Inspect the detail TSV to check whether variants span
-  multiple chromosomes (contamination) or cluster in one gene (linkage).
+- **peak_count 7–9 with n_shared_z 1.5–2.0:** borderline — inspect the detail
+  TSV. Check whether variants span multiple chromosomes (contamination) or
+  cluster in one or two genes (linkage or LOH artefact).
+- **High peak_count but normal FREEMIX, peak_log2_ratio exactly −1.0 against
+  many samples:** likely somatic LOH artefact (see Known false positives).
+  Inspect in-peak variant AFs — if source AF ≈ 1.0, this is not contamination.
 - **No significant peaks:** clean pair with minimal variant sharing.
 - The tool is designed for **unrelated samples**. Same-patient pairs will have
   large overall peaks at ratio=1 (shared clonal mutations) which is expected and
   not flagged as contamination.
 - **Transitive contamination:** if sample Y is heavily contaminated by source Z,
-  then Y will also flag against many other samples that independently carry Z's
-  variants at germline het frequency. The diagnostic pattern is: one sample
-  appears as recipient in many flagged pairs, all at the same fraction, and is
-  never a source. The true source is the pair with the highest peak_count.
+  Y will also flag against many other samples. The diagnostic pattern is: one
+  sample appears as recipient in many flagged pairs, all at the same fraction,
+  and is never a source. The true source is the pair with the highest peak_count.
   Consider excluding confirmed-contaminated samples and re-running.
 
 ---
 
 ## Testing and validation
 
+### Initial development (26TULIP24)
+
 The tool was developed and validated using 3 VCFs from different patients
 processed on the same Uranus sequencing run (26TULIP24), where cross-sample
-contamination between adjacent samples was suspected.
+contamination between adjacent plate wells was suspected. Confirmed by plate
+adjacency (wells A4/B4), VerifyBamID FREEMIX (45.5% / 13.9%), and coverage.
 
-| Pair | True status | n_shared | Non-unity peak_count | Flagged |
-|---|---|---|---|---|
-| A vs B | **Contaminated** (~50%) | 57 | 17 | **Yes** |
-| B vs C | Clean | 31 | 5 (linked PRPF8) | No |
-| C vs A | Clean | 25 | 4 (linked PRPF8) | No |
+| Pair | True status | n_shared | peak_count | n_shared_z | Flagged |
+|---|---|---|---|---|---|
+| A vs B | **Contaminated** (~50%) | 57 | 17 | 7.20 | **Yes** |
+| B vs C | Clean | 31 | 5 (linked PRPF8) | 1.50 | No |
+| C vs A | Clean | 25 | 4 (linked PRPF8) | 0.59 | No |
 
 The contaminated pair shows 17 variants from multiple independent loci (PIK3CD,
 CUX1, DNMT3A, ATM, IDH2, TP53, ASXL1, U2AF1, etc.) all at ratio 2:1,
 correctly identifying ~50% contamination with the direction A→B. The clean pairs
-show only 4-5 linked variants from single genes (PRPF8, SRCAP) which fall below
-the flagging threshold.
+show only 4–5 linked variants from single genes (PRPF8, SRCAP) which fall below
+threshold on both peak_count and n_shared_z.
+
+### Retrospective cohort (100 runs, May 2026)
+
+The tool was applied retrospectively to 100 consecutive haematological oncology
+sequencing runs (Mar 2025 – May 2026) using the `retrospective/` analysis
+scripts. Key findings:
+
+| Metric | Value |
+|---|---|
+| Runs screened | 100 |
+| Total pairwise comparisons | 97,310 |
+| Flagged pairs (peak_count ≥ 10, n_shared_z > 2.0) | 128 |
+| Runs with ≥ 1 flagged pair | 43 / 100 |
+| Strongest signal | peak_count=28, n_shared_z=13.4 (RUN049) |
+
+**Correlation with VerifyBamID FREEMIX:** Pearson r = 0.19 across all samples;
+r = 0.64 within the 5–50% FREEMIX band, confirming the tools detect the same
+events. All primary contamination recipients (FREEMIX > 25%) were also flagged
+by the screen; sources were correctly identified with near-normal FREEMIX.
+
+**VEP config boundary:** Runs before approximately August 2025 (eggd_vep < v1.3,
+`gnomADe_AF` only) have median n_shared ≈ 8 vs ≈ 18–20 for newer runs. This
+arises from gnomADe assigning higher AF estimates to coding variants, causing
+the AF ≥ 0.40 filter to remove more variants. Within-run z-scoring correctly
+normalises for this difference; a global SD is not appropriate across the full
+cohort.
