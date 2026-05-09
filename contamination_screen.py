@@ -50,6 +50,7 @@ _MAX_GNOMAD_AF = 0.40
 # -- Argument parsing ---------------------------------------------------------
 
 def parse_args() -> argparse.Namespace:
+    """Parse and return command-line arguments."""
     p = argparse.ArgumentParser(
         prog="contamination_screen.py",
         description=__doc__,
@@ -634,6 +635,7 @@ def _apply_flags(
 
 
 def write_summary(df: pd.DataFrame, outdir: Path) -> None:
+    """Write the pairwise summary TSV to outdir/summary.tsv."""
     out = outdir / "summary.tsv"
     df.to_csv(out, sep="\t", index=False, na_rep="NA")
     n = df["flagged"].sum()
@@ -817,6 +819,14 @@ def write_plots(
 # -- Main --------------------------------------------------------------------
 
 def main() -> None:
+    """Run the contamination screen pipeline.
+
+    Phase 1: pre-filter each VCF with bcftools (DP, AF, gnomAD thresholds).
+    Phase 2: load filtered VCFs into DataFrames.
+    Phase 3: compute all pairwise log2-ratio histograms in parallel.
+    Phase 4: flag suspicious pairs; write summary TSV, matrix, and optional
+             detail TSVs and plots for the top-flagged pairs.
+    """
     args = parse_args()
 
     logging.basicConfig(
@@ -867,6 +877,7 @@ def main() -> None:
         }
 
         def _cfg_matches() -> bool:
+            """Return True if the on-disk .filter.json matches current filter args."""
             if not cfg.exists():
                 return False
             import json as _json

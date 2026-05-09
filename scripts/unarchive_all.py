@@ -16,6 +16,12 @@ BATCH_SIZE    = 1000  # DNAnexus API limit per unarchive call
 
 
 def main():
+    """Submit unarchive requests for all archived VCFs and poll until live.
+
+    Reads retrospective/selected_vcfs.json, submits unarchive requests
+    batched by project, then polls every 10 minutes until all files are
+    live. Safe to re-run — already-live files are silently skipped.
+    """
     files = json.load(open("retrospective/selected_vcfs.json"))
 
     archived = [f for f in files if f["archival_state"] != "live"]
