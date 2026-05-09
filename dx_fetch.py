@@ -28,13 +28,14 @@ from __future__ import annotations
 
 import argparse
 import fnmatch
+import os
 import subprocess
 import sys
 from pathlib import Path
 
 # -- dx-grab import -----------------------------------------------------------
 
-_DXGRAB_DIR = Path.home() / "Documents" / "dx_grab"
+_DXGRAB_DIR = Path(os.environ.get("DXGRAB_DIR", Path.home() / "Documents" / "dx_grab"))
 if str(_DXGRAB_DIR) not in sys.path:
     sys.path.insert(0, str(_DXGRAB_DIR))
 
@@ -47,6 +48,14 @@ except ImportError:
         file=sys.stderr,
     )
     sys.exit(1)
+
+
+# -- Error helper ------------------------------------------------------------
+
+def _die(msg: str, code: int = 1) -> None:
+    """Print an error message to stderr and exit."""
+    print(f"ERROR: {msg}", file=sys.stderr)
+    sys.exit(code)
 
 
 # -- Constants ----------------------------------------------------------------
@@ -209,17 +218,15 @@ def main() -> None:
 
     try:
         dxpy = dx_grab.check_auth()
-    except RuntimeError as e:
-        print(f"ERROR: {e}", file=sys.stderr)
-        sys.exit(1)
+    except (RuntimeError, ImportError) as e:
+        _die(str(e))
 
     try:
         project_id, project_name = dx_grab.resolve_project(dxpy, args.project)
-    except ValueError as e:
-        print(f"ERROR: {e}", file=sys.stderr)
-        sys.exit(1)
+    except ValueError as e:  # raised by resolve_project() and find_projects() on bad project arg
+        _die(str(e))
 
-    print(f"Project: {project_name}  ({project_id})")
+    print(f"Project: {project_name} ({project_id})")
 
     outdir  = Path(args.output) if args.output else Path(project_name)
     vcf_dir = outdir / "vcfs"
