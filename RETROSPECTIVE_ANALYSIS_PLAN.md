@@ -432,7 +432,7 @@ flagged.to_csv("retrospective/results/flagged_pairs_IDENTIFIED.tsv", sep="\t", i
 
 ## Directory Structure
 
-```
+```text
 contamination-screen/
 ├── contamination_screen.py
 ├── scripts/

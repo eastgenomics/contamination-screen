@@ -169,7 +169,7 @@ From the non-unity peak:
 - `peak_log2_ratio > 0`: sample B's variants appear diluted in A — **B is the
   source**
 
-The contamination fraction estimate is `2^|peak_log2_ratio|`.
+The contamination fraction estimate is `2^(-|peak_log2_ratio|)`.
 
 ### Pre-filtering
 

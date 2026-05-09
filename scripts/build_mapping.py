@@ -32,6 +32,11 @@ output_path = os.path.expanduser(
     "~/Downloads/contamination_screen/contamination_screen_mapping.tsv"
 )
 os.makedirs(os.path.dirname(output_path), exist_ok=True)
+if not rows:
+    raise SystemExit(
+        "No VCFs found in selected_vcfs.json — nothing to write. "
+        "Run select_runs.py first."
+    )
 with open(output_path, "w") as fh:
     w = csv.DictWriter(fh, fieldnames=rows[0].keys(), delimiter="\t")
     w.writeheader()

@@ -27,7 +27,11 @@ for RUN in $(seq -w 001 100); do
     # contamination_screen.py will find the cached files and skip re-filtering.
     # This avoids re-downloading for re-screening runs.
     FILTERED_DIR="$RUNDIR/filtered"
-    N_CACHED=$(ls "$FILTERED_DIR"/*.vcf.gz 2>/dev/null | wc -l)
+    if [ -d "$FILTERED_DIR" ]; then
+        N_CACHED=$(find "$FILTERED_DIR" -maxdepth 1 -type f -name '*.vcf.gz' | wc -l)
+    else
+        N_CACHED=0
+    fi
 
     if [ "$N_CACHED" -gt 0 ]; then
         echo "  Using $N_CACHED cached filtered VCFs (no download needed)"
@@ -42,7 +46,7 @@ for RUN in $(seq -w 001 100); do
             --outdir "$TMPDIR" \
             --skip-existing
 
-        N_CACHED=$(ls "$TMPDIR"/*.vcf.gz 2>/dev/null | wc -l)
+        N_CACHED=$(find "$TMPDIR" -maxdepth 1 -type f -name '*.vcf.gz' | wc -l)
         if [ "$N_CACHED" -eq 0 ]; then
             echo "  No VCFs for $RUN_ID (all archived?), skipping"
             rm -rf "$TMPDIR"; trap - EXIT; continue

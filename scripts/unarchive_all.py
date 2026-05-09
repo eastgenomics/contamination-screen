@@ -32,6 +32,7 @@ def main():
         by_project[f["project_id"]].append(f)
 
     submitted_ids = set()
+    failed_ids    = set()
     for proj_id, proj_files in by_project.items():
         proj_name = proj_files[0]["project_name"]
         file_ids  = [f["file_id"] for f in proj_files]
@@ -42,7 +43,16 @@ def main():
                 dxpy.api.project_unarchive(proj_id, {"files": batch})
                 submitted_ids.update(batch)
             except DXAPIError as e:
+                failed_ids.update(batch)
                 print(f"  WARNING: unarchive failed for {proj_name}: {e}", file=sys.stderr)
+
+    if failed_ids:
+        print(
+            f"\n{len(failed_ids)} file(s) failed to submit for unarchiving — "
+            f"see warnings above. Re-run this script to retry.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
     print(f"\nUnarchive requested for {len(submitted_ids)} file(s). "
           f"Unarchiving typically takes several hours.")

@@ -855,15 +855,40 @@ def main() -> None:
         sample_names.append(name)
         dst = filtered_dir / vcf.name
         tbi = Path(str(dst) + ".tbi")
+        cfg = Path(str(dst) + ".filter.json")
 
-        if not args.force_refilter and dst.exists() and tbi.exists():
+        # Build the current filter config for cache-invalidation comparison
+        current_cfg = {
+            "pass_only":   not args.include_non_pass,
+            "min_dp":      args.min_dp,
+            "min_af":      args.min_af,
+            "max_gnomad":  args.max_gnomad,
+        }
+
+        def _cfg_matches() -> bool:
+            if not cfg.exists():
+                return False
+            import json as _json
+            try:
+                return _json.loads(cfg.read_text()) == current_cfg
+            except Exception:
+                return False
+
+        if not args.force_refilter and dst.exists() and tbi.exists() and _cfg_matches():
             logging.info("  Reusing: %s", dst.name)
         else:
-            logging.info("  Filtering: %s", vcf.name)
+            if dst.exists() and not _cfg_matches():
+                logging.info(
+                    "  Filter args changed — re-filtering: %s", vcf.name
+                )
+            else:
+                logging.info("  Filtering: %s", vcf.name)
             try:
                 filter_vcf(vcf, dst, pass_only=not args.include_non_pass,
                            min_dp=args.min_dp, min_af=args.min_af,
                            max_gnomad=args.max_gnomad)
+                import json as _json
+                cfg.write_text(_json.dumps(current_cfg))
             except RuntimeError as e:
                 logging.error("Filter failed: %s", e)
                 sys.exit(1)
