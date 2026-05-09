@@ -34,7 +34,7 @@ from pathlib import Path
 
 # -- dx-grab import -----------------------------------------------------------
 
-_DXGRAB_DIR = Path.home() / "Documents" / "dx-grab"
+_DXGRAB_DIR = Path.home() / "Documents" / "dx_grab"
 if str(_DXGRAB_DIR) not in sys.path:
     sys.path.insert(0, str(_DXGRAB_DIR))
 
@@ -206,9 +206,19 @@ def main() -> None:
     contamination_screen.py invocation.
     """
     args = parse_args()
-    dxpy = dx_grab.check_auth()
 
-    project_id, project_name = dx_grab.resolve_project(dxpy, args.project)
+    try:
+        dxpy = dx_grab.check_auth()
+    except RuntimeError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    try:
+        project_id, project_name = dx_grab.resolve_project(dxpy, args.project)
+    except ValueError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        sys.exit(1)
+
     print(f"Project: {project_name}  ({project_id})")
 
     outdir  = Path(args.output) if args.output else Path(project_name)
