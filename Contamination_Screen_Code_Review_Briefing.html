@@ -1,0 +1,1190 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Contamination Screen — Code Review Briefing</title>
+<style>
+  :root{
+    --ink:#0d1b2a; --ink-soft:#354656; --muted:#6b7c8d;
+    --line:#e0e7ef; --line-strong:#c5d0db;
+    --bg:#f7f9fb; --paper:#ffffff;
+    --accent:#005eb8; --accent-deep:#003d78; --accent-mid:#1a73c4; --accent-soft:#e3edf8;
+    --green:#1a6e47; --green-soft:#e0f0e8;
+    --amber:#b35c00; --amber-soft:#fdf0e0;
+    --red:#9b2335; --red-soft:#fce8ea;
+    --purple:#4b2d8e; --purple-soft:#ede8f8;
+    --shadow:0 1px 3px rgba(13,27,42,.05),0 4px 20px rgba(13,27,42,.08);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{background:var(--bg);color:var(--ink);
+    font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","Inter",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;}
+  a{color:var(--accent-mid);text-decoration:none}
+  a:hover{text-decoration:underline}
+
+  .layout{display:grid;grid-template-columns:270px minmax(0,1fr);max-width:1320px;margin:0 auto}
+  @media(max-width:860px){.layout{grid-template-columns:1fr}.toc{display:none}}
+  main{padding:0 56px 96px;max-width:900px}
+  @media(max-width:860px){main{padding:0 24px 64px}}
+
+  h1{font-size:38px;line-height:1.1;letter-spacing:-.015em;font-weight:800;color:var(--ink);
+    margin-bottom:14px;max-width:22ch}
+  h2{font-size:24px;font-weight:700;margin-bottom:16px;
+    display:flex;align-items:center;gap:12px}
+  h2 .sec-num{font-size:12px;letter-spacing:.06em;text-transform:uppercase;
+    background:var(--accent);color:#fff;padding:3px 9px;border-radius:999px;
+    font-weight:700;white-space:nowrap}
+  h3{font-size:17px;font-weight:700;margin:28px 0 10px;color:var(--ink)}
+  h4{font-size:13px;letter-spacing:.06em;text-transform:uppercase;
+    color:var(--muted);margin:20px 0 8px;font-weight:600}
+  p{margin-bottom:13px;color:var(--ink-soft)}
+  strong{color:var(--ink)}
+  ul,ol{margin:0 0 14px;padding-left:22px}
+  li{margin:5px 0;color:var(--ink-soft)}
+  code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13.5px;
+    background:#f0f4f8;padding:2px 6px;border-radius:3px;color:var(--accent-deep)}
+
+  .toc{position:sticky;top:0;align-self:start;height:100vh;overflow-y:auto;
+    padding:28px 24px;background:var(--paper);border-right:1px solid var(--line);font-size:13px}
+  .toc-brand{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--accent-deep);margin-bottom:20px;line-height:1.4}
+  .toc-section{font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;
+    color:var(--muted);margin:18px 0 6px}
+  .toc ul{list-style:none}
+  .toc ul li a{display:block;padding:5px 0 5px 16px;color:var(--ink-soft);
+    border-left:2px solid transparent;transition:all .15s;font-size:12.5px;line-height:1.4}
+  .toc ul li a:hover{color:var(--accent);border-left-color:var(--accent);
+    text-decoration:none;padding-left:20px}
+  .toc .meta{margin-top:22px;padding-top:18px;border-top:1px solid var(--line);
+    font-size:11.5px;color:var(--muted);line-height:1.6}
+
+  .hero{padding:52px 0 36px;border-bottom:1px solid var(--line);margin-bottom:8px}
+  .hero .eyebrow{font-size:11px;letter-spacing:.12em;text-transform:uppercase;
+    color:var(--accent);font-weight:700;margin-bottom:12px}
+  .hero h1{font-size:38px;line-height:1.1;letter-spacing:-.015em;font-weight:800;
+    color:var(--ink);margin-bottom:14px;max-width:22ch}
+  .hero .sub{font-size:17px;line-height:1.55;color:var(--ink-soft);max-width:64ch}
+  .hero .meta-row{display:flex;gap:24px;margin-top:20px;flex-wrap:wrap}
+  .hero .meta-item{font-size:12px;color:var(--muted)}
+  .hero .meta-item strong{color:var(--ink-soft)}
+
+  section{padding-top:52px}
+  section+section{border-top:1px solid var(--line)}
+
+  footer{padding:32px 56px;color:var(--muted);font-size:12px;
+    border-top:1px solid var(--line);max-width:1320px;margin:0 auto;line-height:1.7}
+
+  .callout{border-radius:6px;padding:18px 22px;margin:18px 0;border:1px solid}
+  .callout.blue{border-color:#b3cce8;background:var(--accent-soft)}
+  .callout.green{border-color:#a8d4bb;background:var(--green-soft)}
+  .callout.amber{border-color:#e8c28a;background:var(--amber-soft)}
+  .callout.red{border-color:#e8a8a8;background:var(--red-soft)}
+  .callout .tag{display:block;font-size:11px;letter-spacing:.08em;text-transform:uppercase;
+    font-weight:700;margin-bottom:6px}
+  .callout.blue .tag{color:var(--accent-deep)}
+  .callout.green .tag{color:var(--green)}
+  .callout.amber .tag{color:var(--amber)}
+  .callout.red .tag{color:var(--red)}
+  .callout p:last-child{margin:0}
+
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:22px 0}
+  @media(max-width:640px){.stats{grid-template-columns:repeat(2,1fr)}}
+  .stat{background:var(--paper);border:1px solid var(--line);border-radius:8px;
+    padding:16px;border-top:3px solid var(--accent)}
+  .stat .n{font-size:26px;font-weight:800;color:var(--accent-deep);line-height:1.1;
+    font-variant-numeric:tabular-nums}
+  .stat .l{font-size:12px;color:var(--muted);margin-top:4px;line-height:1.4}
+  .stat .src{font-size:10.5px;color:var(--line-strong);margin-top:8px;font-style:italic}
+
+  .card-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin:18px 0}
+  @media(max-width:640px){.card-grid{grid-template-columns:1fr}}
+  .card{background:var(--paper);border:1px solid var(--line);border-radius:8px;
+    padding:18px;box-shadow:var(--shadow)}
+  .card-head{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+  .card-icon{width:34px;height:34px;border-radius:8px;display:flex;align-items:center;
+    justify-content:center;flex-shrink:0}
+  .card-name{font-weight:700;font-size:14.5px;color:var(--ink);line-height:1.2}
+  .card-sub{font-size:11.5px;color:var(--muted)}
+  .card p{font-size:13.5px;margin:0 0 10px}
+  .card p:last-child{margin:0}
+  .pill{display:inline-block;padding:2px 9px;border-radius:999px;
+    font-size:11px;font-weight:600;letter-spacing:.04em}
+  .pill.green{background:var(--green-soft);color:var(--green)}
+  .pill.amber{background:var(--amber-soft);color:var(--amber)}
+  .pill.blue{background:var(--accent-soft);color:var(--accent-deep)}
+  .pill.purple{background:var(--purple-soft);color:var(--purple)}
+  .pill.red{background:var(--red-soft);color:var(--red)}
+
+  table{width:100%;border-collapse:collapse;margin:16px 0;font-size:14px}
+  th,td{text-align:left;padding:11px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{background:#f0f4f8;font-weight:600;font-size:12.5px;color:var(--ink);letter-spacing:.02em}
+  tr:hover td{background:#fafbfd}
+
+  figure{margin:24px 0}
+  .fig-wrap{background:var(--paper);border:1px solid var(--line);
+    border-radius:8px;padding:20px;overflow:auto}
+  figcaption{font-size:12px;color:var(--muted);text-align:center;
+    margin-top:8px;font-style:italic;line-height:1.5}
+
+  .ref{display:inline-block;background:#f0f4f8;border:1px solid var(--line);
+    border-radius:4px;padding:1px 7px;font-size:11.5px;color:var(--ink-soft);
+    font-family:ui-monospace,Menlo,Consolas,monospace;white-space:nowrap}
+
+  .formula{background:#f0f4f8;border:1px solid var(--line);border-radius:6px;
+    padding:14px 20px;margin:14px 0;font-family:ui-monospace,Menlo,Consolas,monospace;
+    font-size:14px;color:var(--ink);text-align:center}
+</style>
+</head>
+<body>
+
+<div class="layout">
+
+<aside class="toc">
+  <div class="toc-brand">PERSONAL BRIEFING — CONTAMINATION SCREEN<br>10 May 2026</div>
+
+  <div class="toc-section">Understanding</div>
+  <ul>
+    <li><a href="#overview">Overview</a></li>
+    <li><a href="#signal">The Contamination Signal</a></li>
+    <li><a href="#filtering">Pre-filtering Pipeline</a></li>
+    <li><a href="#detection">Dual-Peak Detection</a></li>
+    <li><a href="#flagging">Flagging Thresholds</a></li>
+  </ul>
+
+  <div class="toc-section">Context</div>
+  <ul>
+    <li><a href="#false-positives">Known False Positives</a></li>
+    <li><a href="#freemix">FREEMIX Correlation</a></li>
+    <li><a href="#validation">Validation Results</a></li>
+    <li><a href="#retro-data">Retrospective Evidence</a></li>
+  </ul>
+
+  <div class="toc-section">Reference</div>
+  <ul>
+    <li><a href="#interpretation">Interpretation Guide</a></li>
+    <li><a href="#outputs">Output Files</a></li>
+  </ul>
+
+  <div class="meta">For code review by East Genomics Bioinformatics team.<br>Source: contamination_screen.py v1.0</div>
+</aside>
+
+<main>
+
+<header class="hero">
+  <div class="eyebrow">Code review guide &#183; Clinical bioinformatics</div>
+  <h1>Contamination Screen</h1>
+  <p class="sub">A visual guide to the logic and design of contamination_screen.py &#8212; a pairwise cross-sample contamination detector for haematological oncology panel VCFs.</p>
+  <div class="meta-row">
+    <span class="meta-item"><strong>Author</strong> Joo Wook Ahn</span>
+    <span class="meta-item"><strong>Date</strong> 10 May 2026</span>
+    <span class="meta-item"><strong>Tool</strong> contamination_screen.py (1,009 lines)</span>
+    <span class="meta-item"><strong>Pipeline</strong> Uranus (eggd_vep output)</span>
+  </div>
+</header>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<section id="overview">
+  <h2><span class="sec-num">01</span> Overview</h2>
+
+  <p>This tool detects <strong>cross-sample DNA contamination</strong> in a batch of tumour VCFs from the same sequencing run. It works by comparing every pair of samples and looking for variants that appear at a <strong>consistent, diluted ratio</strong> &#8212; the hallmark of one sample&#8217;s DNA leaking into another.</p>
+
+  <div class="stats">
+    <div class="stat">
+      <div class="n">~1,009</div>
+      <div class="l">Lines of Python</div>
+    </div>
+    <div class="stat">
+      <div class="n">97,310</div>
+      <div class="l">Pairs validated</div>
+      <div class="src">100-run retrospective</div>
+    </div>
+    <div class="stat">
+      <div class="n">128</div>
+      <div class="l">Pairs flagged</div>
+      <div class="src">Default thresholds</div>
+    </div>
+    <div class="stat">
+      <div class="n">4,400+</div>
+      <div class="l">Samples screened</div>
+      <div class="src">Mar 2025 &#8211; May 2026</div>
+    </div>
+  </div>
+
+  <h3>What does it do?</h3>
+  <p>For every pair of samples (A, B) on a run:</p>
+  <ol>
+    <li>Find all variants present in <strong>both</strong> VCFs (shared variants)</li>
+    <li>Compute the VAF ratio: <code>VAF_B / VAF_A</code> for each shared variant</li>
+    <li>Build a histogram of <code>log2(ratio)</code> and look for peaks</li>
+    <li>If a peak exists <strong>away from ratio=1</strong>, flag it as contamination</li>
+  </ol>
+
+  <figure>
+  <div class="fig-wrap">
+  <svg viewBox="0 0 820 180" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="End-to-end pipeline flow diagram">
+    <style>
+      .box-label{font:bold 12px -apple-system,sans-serif}
+      .box-sub{font:11px -apple-system,sans-serif}
+      .arrow-label{font:10px -apple-system,sans-serif}
+    </style>
+    <defs>
+      <marker id="arr" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+        <path d="M0,0 L8,3 L0,6" fill="#005eb8"/>
+      </marker>
+    </defs>
+    <!-- Phase boxes -->
+    <rect x="20" y="50" width="140" height="70" rx="8" fill="#e3edf8" stroke="#005eb8" stroke-width="1.5"/>
+    <text x="90" y="78" text-anchor="middle" class="box-label" fill="#003d78">Phase 1</text>
+    <text x="90" y="96" text-anchor="middle" class="box-sub" fill="#354656">Pre-filter VCFs</text>
+    <text x="90" y="110" text-anchor="middle" class="box-sub" fill="#6b7c8d">bcftools pipeline</text>
+
+    <line x1="160" y1="85" x2="195" y2="85" stroke="#005eb8" stroke-width="1.5" marker-end="url(#arr)"/>
+
+    <rect x="200" y="50" width="140" height="70" rx="8" fill="#e3edf8" stroke="#005eb8" stroke-width="1.5"/>
+    <text x="270" y="78" text-anchor="middle" class="box-label" fill="#003d78">Phase 2</text>
+    <text x="270" y="96" text-anchor="middle" class="box-sub" fill="#354656">Load into DataFrames</text>
+    <text x="270" y="110" text-anchor="middle" class="box-sub" fill="#6b7c8d">bcftools query</text>
+
+    <line x1="340" y1="85" x2="375" y2="85" stroke="#005eb8" stroke-width="1.5" marker-end="url(#arr)"/>
+
+    <rect x="380" y="50" width="160" height="70" rx="8" fill="#005eb8" stroke="#003d78" stroke-width="1.5"/>
+    <text x="460" y="78" text-anchor="middle" class="box-label" fill="#ffffff">Phase 3</text>
+    <text x="460" y="96" text-anchor="middle" class="box-sub" fill="#e3edf8">Pairwise comparisons</text>
+    <text x="460" y="110" text-anchor="middle" class="box-sub" fill="#e3edf8">log2-ratio histograms</text>
+
+    <line x1="540" y1="85" x2="575" y2="85" stroke="#005eb8" stroke-width="1.5" marker-end="url(#arr)"/>
+
+    <rect x="580" y="50" width="140" height="70" rx="8" fill="#e3edf8" stroke="#005eb8" stroke-width="1.5"/>
+    <text x="650" y="78" text-anchor="middle" class="box-label" fill="#003d78">Phase 4</text>
+    <text x="650" y="96" text-anchor="middle" class="box-sub" fill="#354656">Flag + write outputs</text>
+    <text x="650" y="110" text-anchor="middle" class="box-sub" fill="#6b7c8d">summary.tsv, matrix</text>
+
+    <!-- Input/output labels -->
+    <text x="90" y="40" text-anchor="middle" class="arrow-label" fill="#6b7c8d">Raw VCFs from eggd_vep</text>
+    <text x="650" y="145" text-anchor="middle" class="arrow-label" fill="#6b7c8d">Flagged pairs + detail TSVs</text>
+  </svg>
+  </div>
+  <figcaption>Figure 1 &#183; The four phases of contamination_screen.py. Phase 3 (pairwise comparison) is the core algorithm.</figcaption>
+  </figure>
+
+  <div class="callout blue">
+    <span class="tag">Key concept</span>
+    <p>This tool is fundamentally different from somatic variant calling. Contamination detection <strong>uses</strong> germline variants as markers &#8212; the very variants that clinical reporting pipelines filter out. The tool intentionally retains common germline SNPs because they are the most reliable contamination signal.</p>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<section id="signal">
+  <h2><span class="sec-num">02</span> The Contamination Signal</h2>
+
+  <p>When sample A&#8217;s DNA contaminates sample B, the source&#8217;s germline heterozygous variants (at ~50% VAF in source) appear at a <strong>diluted, consistent fraction</strong> in the recipient:</p>
+
+  <div class="formula">VAF<sub>recipient</sub> &#8776; VAF<sub>source</sub> &#215; contamination_fraction</div>
+
+  <p>For example, if 25% of B&#8217;s library is actually from A, then A&#8217;s germline het variants (~50% VAF) will appear in B at ~12.5% VAF. The ratio across all these markers is consistently ~0.25:</p>
+
+  <div class="formula">log<sub>2</sub>(VAF<sub>B</sub> / VAF<sub>A</sub>) = log<sub>2</sub>(0.125 / 0.50) = log<sub>2</sub>(0.25) = &#8722;2.0</div>
+
+  <figure>
+  <div class="fig-wrap">
+  <svg viewBox="0 0 820 320" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Contamination signal concept showing consistent VAF ratios">
+    <style>
+      .ax{font:11px -apple-system,sans-serif}
+      .title{font:bold 12px -apple-system,sans-serif}
+    </style>
+    <text x="20" y="18" font-size="10" letter-spacing="2" fill="#6b7c8d">CONCEPT DIAGRAM</text>
+
+    <!-- Left panel: Source and Recipient VAFs -->
+    <rect x="30" y="35" width="350" height="270" rx="6" fill="#f7f9fb" stroke="#e0e7ef"/>
+    <text x="205" y="55" text-anchor="middle" class="title" fill="#003d78">Shared variants between two samples</text>
+
+    <!-- Source bars (high VAF ~50%) -->
+    <text x="80" y="80" text-anchor="middle" class="ax" fill="#6b7c8d">Source (A)</text>
+    <rect x="55" y="90" width="50" height="40" rx="3" fill="#005eb8" opacity="0.8"/>
+    <text x="80" y="115" text-anchor="middle" font-size="11" fill="#ffffff" font-weight="bold">50%</text>
+    <rect x="115" y="90" width="50" height="40" rx="3" fill="#005eb8" opacity="0.8"/>
+    <text x="140" y="115" text-anchor="middle" font-size="11" fill="#ffffff" font-weight="bold">48%</text>
+    <rect x="175" y="90" width="50" height="40" rx="3" fill="#005eb8" opacity="0.8"/>
+    <text x="200" y="115" text-anchor="middle" font-size="11" fill="#ffffff" font-weight="bold">52%</text>
+    <rect x="235" y="90" width="50" height="40" rx="3" fill="#005eb8" opacity="0.8"/>
+    <text x="260" y="115" text-anchor="middle" font-size="11" fill="#ffffff" font-weight="bold">49%</text>
+    <rect x="295" y="90" width="50" height="40" rx="3" fill="#005eb8" opacity="0.8"/>
+    <text x="320" y="115" text-anchor="middle" font-size="11" fill="#ffffff" font-weight="bold">51%</text>
+
+    <!-- Recipient bars (low VAF ~12%) -->
+    <text x="80" y="160" text-anchor="middle" class="ax" fill="#6b7c8d">Recipient (B)</text>
+    <rect x="55" y="170" width="50" height="12" rx="3" fill="#9b2335" opacity="0.8"/>
+    <text x="80" y="200" text-anchor="middle" font-size="11" fill="#9b2335" font-weight="bold">12%</text>
+    <rect x="115" y="170" width="50" height="11" rx="3" fill="#9b2335" opacity="0.8"/>
+    <text x="140" y="200" text-anchor="middle" font-size="11" fill="#9b2335" font-weight="bold">11%</text>
+    <rect x="175" y="170" width="50" height="13" rx="3" fill="#9b2335" opacity="0.8"/>
+    <text x="200" y="200" text-anchor="middle" font-size="11" fill="#9b2335" font-weight="bold">13%</text>
+    <rect x="235" y="170" width="50" height="12" rx="3" fill="#9b2335" opacity="0.8"/>
+    <text x="260" y="200" text-anchor="middle" font-size="11" fill="#9b2335" font-weight="bold">12%</text>
+    <rect x="295" y="170" width="50" height="13" rx="3" fill="#9b2335" opacity="0.8"/>
+    <text x="320" y="200" text-anchor="middle" font-size="11" fill="#9b2335" font-weight="bold">13%</text>
+
+    <!-- Ratio annotation -->
+    <text x="205" y="240" text-anchor="middle" font-size="12" fill="#354656">Ratios: 0.24, 0.23, 0.25, 0.24, 0.25</text>
+    <text x="205" y="260" text-anchor="middle" font-size="13" fill="#003d78" font-weight="bold">All cluster at ratio &#8776; 0.25 (log2 = &#8722;2.0)</text>
+    <text x="205" y="282" text-anchor="middle" font-size="11" fill="#6b7c8d">&#8594; Consistent ratio = contamination signal</text>
+
+    <!-- Right panel: Why this works -->
+    <rect x="420" y="35" width="380" height="270" rx="6" fill="#f7f9fb" stroke="#e0e7ef"/>
+    <text x="610" y="55" text-anchor="middle" class="title" fill="#003d78">Why germline het SNPs are ideal markers</text>
+
+    <text x="440" y="82" font-size="13" fill="#354656">&#10003; Hundreds per sample on a gene panel</text>
+    <text x="440" y="108" font-size="13" fill="#354656">&#10003; Stable VAF at ~50% (high-depth, reliable)</text>
+    <text x="440" y="134" font-size="13" fill="#354656">&#10003; Span entire panel (multiple chromosomes)</text>
+    <text x="440" y="160" font-size="13" fill="#354656">&#10003; Present in every patient (universal signal)</text>
+    <text x="440" y="186" font-size="13" fill="#354656">&#10003; Ratio is consistent across all markers</text>
+
+    <line x1="440" y1="205" x2="780" y2="205" stroke="#e0e7ef" stroke-width="1"/>
+
+    <text x="440" y="230" font-size="12" fill="#b35c00" font-weight="bold">&#9888; Counter-intuitive:</text>
+    <text x="440" y="252" font-size="12" fill="#6b7c8d">Clinical filters (gnomAD AF, synonymous</text>
+    <text x="440" y="270" font-size="12" fill="#6b7c8d">exclusion) would DESTROY the contamination</text>
+    <text x="440" y="288" font-size="12" fill="#6b7c8d">signal by removing 87% of markers.</text>
+  </svg>
+  </div>
+  <figcaption>Figure 2 &#183; The contamination signal: source variants appear at a consistent diluted fraction in the recipient. Germline het SNPs are ideal markers because they are stable, abundant, and genome-wide.</figcaption>
+  </figure>
+
+  <h3>Directionality</h3>
+  <p>The sign of <code>log2(VAF_B / VAF_A)</code> tells us who is the source:</p>
+
+  <figure>
+  <div class="fig-wrap">
+  <svg viewBox="0 0 820 140" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Directionality diagram showing how log2 ratio sign indicates contamination direction">
+    <defs>
+      <marker id="arr2" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+        <path d="M0,0 L8,3 L0,6" fill="#9b2335"/>
+      </marker>
+    </defs>
+    <!-- Left: negative log2 -->
+    <rect x="30" y="20" width="360" height="100" rx="6" fill="#fce8ea" stroke="#9b2335" stroke-width="1"/>
+    <text x="210" y="45" text-anchor="middle" font-size="14" fill="#9b2335" font-weight="bold">log2(ratio) &lt; 0</text>
+    <text x="210" y="68" text-anchor="middle" font-size="12" fill="#354656">VAF_A &gt; VAF_B &#8594; A has higher VAF at shared sites</text>
+    <text x="210" y="90" text-anchor="middle" font-size="13" fill="#003d78" font-weight="bold">A is the SOURCE, B is the RECIPIENT</text>
+    <text x="210" y="108" text-anchor="middle" font-size="11" fill="#6b7c8d">A&#8217;s variants appear diluted in B</text>
+
+    <!-- Right: positive log2 -->
+    <rect x="430" y="20" width="360" height="100" rx="6" fill="#e3edf8" stroke="#005eb8" stroke-width="1"/>
+    <text x="610" y="45" text-anchor="middle" font-size="14" fill="#005eb8" font-weight="bold">log2(ratio) &gt; 0</text>
+    <text x="610" y="68" text-anchor="middle" font-size="12" fill="#354656">VAF_B &gt; VAF_A &#8594; B has higher VAF at shared sites</text>
+    <text x="610" y="90" text-anchor="middle" font-size="13" fill="#003d78" font-weight="bold">B is the SOURCE, A is the RECIPIENT</text>
+    <text x="610" y="108" text-anchor="middle" font-size="11" fill="#6b7c8d">B&#8217;s variants appear diluted in A</text>
+  </svg>
+  </div>
+  <figcaption>Figure 3 &#183; Directionality: the sign of the log2 ratio tells you which sample is the contamination source and which is the recipient.</figcaption>
+  </figure>
+
+</section>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<section id="filtering">
+  <h2><span class="sec-num">03</span> Pre-filtering Pipeline</h2>
+
+  <p>Before comparing pairs, each VCF is pre-filtered with a 4-stage <code>bcftools</code> pipeline. The goal is to keep only variants where VAF is <strong>reliably measured</strong> and remove one specific population-frequency artefact.</p>
+
+  <figure>
+  <div class="fig-wrap">
+  <svg viewBox="0 0 820 240" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Four-stage bcftools filtering pipeline">
+    <style>
+      .stage-title{font:bold 12px -apple-system,sans-serif}
+      .stage-cmd{font:11px ui-monospace,Menlo,monospace}
+      .stage-desc{font:11px -apple-system,sans-serif}
+    </style>
+    <defs>
+      <marker id="arr3" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+        <path d="M0,0 L8,3 L0,6" fill="#005eb8"/>
+      </marker>
+    </defs>
+    <text x="20" y="18" font-size="10" letter-spacing="2" fill="#6b7c8d">BCFTOOLS PIPELINE</text>
+
+    <!-- Stage 1 -->
+    <rect x="20" y="35" width="180" height="85" rx="6" fill="#e3edf8" stroke="#005eb8" stroke-width="1.5"/>
+    <text x="110" y="57" text-anchor="middle" class="stage-title" fill="#003d78">Stage 1: PASS filter</text>
+    <text x="110" y="77" text-anchor="middle" class="stage-cmd" fill="#354656">bcftools view -f PASS</text>
+    <text x="110" y="100" text-anchor="middle" class="stage-desc" fill="#6b7c8d">Remove soft-filtered</text>
+    <text x="110" y="113" text-anchor="middle" class="stage-desc" fill="#6b7c8d">variants (strand bias etc)</text>
+
+    <line x1="200" y1="77" x2="225" y2="77" stroke="#005eb8" stroke-width="1.5" marker-end="url(#arr3)"/>
+
+    <!-- Stage 2 -->
+    <rect x="230" y="35" width="180" height="85" rx="6" fill="#e3edf8" stroke="#005eb8" stroke-width="1.5"/>
+    <text x="320" y="57" text-anchor="middle" class="stage-title" fill="#003d78">Stage 2: Quality</text>
+    <text x="320" y="77" text-anchor="middle" class="stage-cmd" fill="#354656">DP&lt;99 || AF&lt;0.03</text>
+    <text x="320" y="100" text-anchor="middle" class="stage-desc" fill="#6b7c8d">Remove low-depth and</text>
+    <text x="320" y="113" text-anchor="middle" class="stage-desc" fill="#6b7c8d">low-VAF (unreliable ratios)</text>
+
+    <line x1="410" y1="77" x2="435" y2="77" stroke="#005eb8" stroke-width="1.5" marker-end="url(#arr3)"/>
+
+    <!-- Stage 3 -->
+    <rect x="440" y="35" width="180" height="85" rx="6" fill="#e3edf8" stroke="#005eb8" stroke-width="1.5"/>
+    <text x="530" y="57" text-anchor="middle" class="stage-title" fill="#003d78">Stage 3: Split VEP</text>
+    <text x="530" y="77" text-anchor="middle" class="stage-cmd" fill="#354656">+split-vep -s worst</text>
+    <text x="530" y="100" text-anchor="middle" class="stage-desc" fill="#6b7c8d">Extract gnomAD AF + gene</text>
+    <text x="530" y="113" text-anchor="middle" class="stage-desc" fill="#6b7c8d">into typed INFO fields</text>
+
+    <line x1="620" y1="77" x2="645" y2="77" stroke="#005eb8" stroke-width="1.5" marker-end="url(#arr3)"/>
+
+    <!-- Stage 4 -->
+    <rect x="650" y="35" width="150" height="85" rx="6" fill="#fdf0e0" stroke="#b35c00" stroke-width="1.5"/>
+    <text x="725" y="57" text-anchor="middle" class="stage-title" fill="#b35c00">Stage 4: gnomAD</text>
+    <text x="725" y="77" text-anchor="middle" class="stage-cmd" fill="#354656">AF &gt;= 0.40</text>
+    <text x="725" y="100" text-anchor="middle" class="stage-desc" fill="#6b7c8d">Remove hom/het</text>
+    <text x="725" y="113" text-anchor="middle" class="stage-desc" fill="#6b7c8d">artefact (see below)</text>
+
+    <!-- Annotation: piped together -->
+    <text x="410" y="150" text-anchor="middle" font-size="12" fill="#354656">All four stages are piped together: <tspan font-family="ui-monospace,Menlo,monospace">view | filter | split-vep | view</tspan></text>
+    <text x="410" y="170" text-anchor="middle" font-size="12" fill="#6b7c8d">Output: one filtered, indexed VCF per sample (cached for re-runs)</text>
+
+    <!-- What is NOT filtered -->
+    <rect x="20" y="190" width="780" height="40" rx="6" fill="#e0f0e8" stroke="#1a6e47" stroke-width="1"/>
+    <text x="410" y="215" text-anchor="middle" font-size="12" fill="#1a6e47" font-weight="bold">&#10003; NOT filtered: synonymous variants, intronic variants, gnomAD AF 0.002&#8211;0.39, cohort prevalence &#8212; these carry the contamination signal</text>
+  </svg>
+  </div>
+  <figcaption>Figure 4 &#183; The 4-stage bcftools filtering pipeline. Stage 4 (amber) removes the one population-frequency artefact; all other germline variants are deliberately retained.</figcaption>
+  </figure>
+
+  <h3>Why filter gnomAD AF &#8805; 0.40?</h3>
+
+  <p>At high population frequencies, many individuals are <strong>homozygous-alt</strong> (AF &#8776; 1.0) while others are <strong>heterozygous</strong> (AF &#8776; 0.5). The ratio between them is exactly 2:1, which mimics 50% contamination.</p>
+
+  <figure>
+  <div class="fig-wrap">
+  <svg viewBox="0 0 820 220" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="gnomAD threshold explanation showing hom/het artefact">
+    <text x="20" y="18" font-size="10" letter-spacing="2" fill="#6b7c8d">GNOMAD ARTEFACT EXPLANATION</text>
+
+    <!-- Left: the problem -->
+    <rect x="30" y="35" width="370" height="170" rx="6" fill="#fdf0e0" stroke="#b35c00" stroke-width="1"/>
+    <text x="215" y="58" text-anchor="middle" font-size="13" fill="#b35c00" font-weight="bold">The Problem (gnomAD AF &gt; 0.40)</text>
+
+    <text x="50" y="85" font-size="12" fill="#354656">Sample A: homozygous-alt &#8594; AF = 1.0</text>
+    <text x="50" y="105" font-size="12" fill="#354656">Sample B: heterozygous &#8594; AF = 0.5</text>
+    <text x="50" y="130" font-size="12" fill="#354656">Ratio = 0.5 / 1.0 = <tspan font-weight="bold" fill="#9b2335">0.5 (log2 = &#8722;1.0)</tspan></text>
+    <text x="50" y="155" font-size="12" fill="#354656">This <tspan font-weight="bold">exactly mimics</tspan> 50% contamination!</text>
+
+    <text x="50" y="185" font-size="11" fill="#6b7c8d">At gnomAD AF = 0.40:</text>
+    <text x="50" y="200" font-size="11" fill="#6b7c8d">P(hom-alt) = 0.40&#178; = 16%, P(het) = 48%</text>
+
+    <!-- Right: the solution -->
+    <rect x="430" y="35" width="370" height="170" rx="6" fill="#e0f0e8" stroke="#1a6e47" stroke-width="1"/>
+    <text x="615" y="58" text-anchor="middle" font-size="13" fill="#1a6e47" font-weight="bold">The Solution</text>
+
+    <text x="450" y="85" font-size="12" fill="#354656">Remove all variants with gnomAD AF &#8805; 0.40</text>
+    <text x="450" y="110" font-size="12" fill="#354656" font-weight="bold">Empirical validation:</text>
+    <text x="450" y="130" font-size="12" fill="#354656">&#8226; 15/15 false positive markers: AF &gt; 0.40</text>
+    <text x="450" y="150" font-size="12" fill="#354656">&#8226; 17/18 true contamination markers: AF &lt; 0.40</text>
+    <text x="450" y="175" font-size="12" fill="#1a6e47" font-weight="bold">Removes 100% of this artefact</text>
+    <text x="450" y="195" font-size="12" fill="#1a6e47" font-weight="bold">while keeping 94% of real signal</text>
+  </svg>
+  </div>
+  <figcaption>Figure 5 &#183; Why gnomAD AF &#8805; 0.40 is the only population-frequency filter applied. It removes a specific hom/het artefact without destroying the contamination signal.</figcaption>
+  </figure>
+
+  <table>
+    <thead>
+      <tr><th>Filter</th><th>Threshold</th><th>Rationale</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>PASS only</td><td>Sentieon TNfilter</td><td>Removes strand bias, weak evidence, etc.</td></tr>
+      <tr><td>Read depth</td><td>DP &#8805; 99</td><td>At DP &lt; 99, VAF noise is too high for reliable ratios</td></tr>
+      <tr><td>VAF floor</td><td>AF &#8805; 0.03</td><td>Below 3%, allele fractions are unreliable</td></tr>
+      <tr><td>gnomAD AF</td><td>&lt; 0.40</td><td>Removes hom/het 2:1 artefact (see above)</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout amber">
+    <span class="tag">Design decision</span>
+    <p>No other population-frequency filter is applied. Clinical filters like gnomAD AF &#8805; 0.002 would destroy <strong>87%</strong> of the contamination signal. This tool deliberately retains common germline variants because they ARE the signal.</p>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<section id="detection">
+  <h2><span class="sec-num">04</span> Dual-Peak Detection</h2>
+
+  <p>Because we keep common germline variants, two unrelated people will share many variants at <strong>ratio &#8776; 1</strong> (both carry them as hets at ~50% VAF). The contamination signal appears as a <strong>second peak at a different ratio</strong>. The algorithm finds both:</p>
+
+  <figure>
+  <div class="fig-wrap">
+  <svg viewBox="0 0 820 340" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Log2-ratio histogram showing dual peaks: germline sharing at ratio=1 and contamination at a non-unity ratio">
+    <style>
+      .ax-lbl{font:11px -apple-system,sans-serif}
+      .peak-lbl{font:bold 12px -apple-system,sans-serif}
+    </style>
+    <text x="20" y="18" font-size="10" letter-spacing="2" fill="#6b7c8d">LOG2-RATIO HISTOGRAM</text>
+
+    <!-- Axes -->
+    <line x1="80" y1="270" x2="780" y2="270" stroke="#354656" stroke-width="1.5"/>
+    <line x1="80" y1="270" x2="80" y2="40" stroke="#354656" stroke-width="1.5"/>
+
+    <!-- X-axis labels -->
+    <text x="80" y="290" text-anchor="middle" class="ax-lbl" fill="#6b7c8d">-4</text>
+    <text x="168" y="290" text-anchor="middle" class="ax-lbl" fill="#6b7c8d">-3</text>
+    <text x="255" y="290" text-anchor="middle" class="ax-lbl" fill="#6b7c8d">-2</text>
+    <text x="343" y="290" text-anchor="middle" class="ax-lbl" fill="#6b7c8d">-1</text>
+    <text x="430" y="290" text-anchor="middle" class="ax-lbl" fill="#6b7c8d">0</text>
+    <text x="518" y="290" text-anchor="middle" class="ax-lbl" fill="#6b7c8d">+1</text>
+    <text x="605" y="290" text-anchor="middle" class="ax-lbl" fill="#6b7c8d">+2</text>
+    <text x="693" y="290" text-anchor="middle" class="ax-lbl" fill="#6b7c8d">+3</text>
+    <text x="780" y="290" text-anchor="middle" class="ax-lbl" fill="#6b7c8d">+4</text>
+    <text x="430" y="320" text-anchor="middle" font-size="12" fill="#354656">log<tspan font-size="9" dy="3">2</tspan><tspan dy="-3">(VAF_B / VAF_A)</tspan></text>
+
+    <!-- Y-axis label -->
+    <text x="35" y="155" text-anchor="middle" font-size="12" fill="#354656" transform="rotate(-90 35 155)">Variant count</text>
+
+    <!-- Unity zone (shaded) -->
+    <rect x="404" y="40" width="52" height="230" fill="#e0e7ef" opacity="0.5"/>
+    <text x="430" y="335" text-anchor="middle" font-size="10" fill="#6b7c8d">Unity zone (|log2| &#8804; 0.3)</text>
+
+    <!-- Germline peak at ~0 (tall, narrow cluster) -->
+    <rect x="410" y="60" width="16" height="210" rx="2" fill="#005eb8" opacity="0.7"/>
+    <rect x="427" y="100" width="16" height="170" rx="2" fill="#005eb8" opacity="0.6"/>
+    <rect x="393" y="110" width="16" height="160" rx="2" fill="#005eb8" opacity="0.6"/>
+    <rect x="444" y="160" width="16" height="110" rx="2" fill="#005eb8" opacity="0.4"/>
+    <rect x="376" y="170" width="16" height="100" rx="2" fill="#005eb8" opacity="0.4"/>
+    <rect x="461" y="210" width="16" height="60" rx="2" fill="#005eb8" opacity="0.3"/>
+    <rect x="359" y="220" width="16" height="50" rx="2" fill="#005eb8" opacity="0.3"/>
+
+    <!-- Contamination peak at log2 = -2 (smaller, distinct cluster) -->
+    <rect x="247" y="140" width="16" height="130" rx="2" fill="#9b2335" opacity="0.8"/>
+    <rect x="230" y="170" width="16" height="100" rx="2" fill="#9b2335" opacity="0.6"/>
+    <rect x="264" y="180" width="16" height="90" rx="2" fill="#9b2335" opacity="0.6"/>
+    <rect x="213" y="220" width="16" height="50" rx="2" fill="#9b2335" opacity="0.4"/>
+    <rect x="281" y="225" width="16" height="45" rx="2" fill="#9b2335" opacity="0.4"/>
+
+    <!-- Background noise (sparse) -->
+    <rect x="130" y="250" width="16" height="20" rx="2" fill="#c5d0db" opacity="0.5"/>
+    <rect x="160" y="245" width="16" height="25" rx="2" fill="#c5d0db" opacity="0.5"/>
+    <rect x="310" y="248" width="16" height="22" rx="2" fill="#c5d0db" opacity="0.5"/>
+    <rect x="530" y="250" width="16" height="20" rx="2" fill="#c5d0db" opacity="0.5"/>
+    <rect x="580" y="252" width="16" height="18" rx="2" fill="#c5d0db" opacity="0.5"/>
+    <rect x="650" y="255" width="16" height="15" rx="2" fill="#c5d0db" opacity="0.5"/>
+
+    <!-- Peak annotations -->
+    <line x1="418" y1="55" x2="418" y2="45" stroke="#005eb8" stroke-width="1.5"/>
+    <text x="418" y="38" text-anchor="middle" class="peak-lbl" fill="#005eb8">Overall peak (germline)</text>
+
+    <line x1="255" y1="135" x2="255" y2="100" stroke="#9b2335" stroke-width="1.5" stroke-dasharray="4 3"/>
+    <text x="255" y="90" text-anchor="middle" class="peak-lbl" fill="#9b2335">Non-unity peak</text>
+    <text x="255" y="78" text-anchor="middle" font-size="11" fill="#9b2335">(CONTAMINATION)</text>
+
+    <!-- Legend -->
+    <rect x="600" y="50" width="12" height="12" rx="2" fill="#005eb8" opacity="0.7"/>
+    <text x="618" y="60" font-size="11" fill="#354656">Shared germline (ratio &#8776; 1)</text>
+    <rect x="600" y="70" width="12" height="12" rx="2" fill="#9b2335" opacity="0.8"/>
+    <text x="618" y="80" font-size="11" fill="#354656">Contamination signal</text>
+    <rect x="600" y="90" width="12" height="12" rx="2" fill="#c5d0db" opacity="0.5"/>
+    <text x="618" y="100" font-size="11" fill="#354656">Background noise</text>
+  </svg>
+  </div>
+  <figcaption>Figure 6 &#183; Dual-peak detection. The overall peak (blue) captures shared germline at ratio=1. The non-unity peak (red) is the contamination signal &#8212; variants from the source appearing at a consistent diluted fraction in the recipient. The grey shaded zone (|log2| &#8804; 0.3) separates the two regions.</figcaption>
+  </figure>
+
+  <h3>The unity zone boundary: |log2| &#8804; 0.3</h3>
+  <p>The boundary between &#8220;unity&#8221; (shared germline) and &#8220;non-unity&#8221; (potential contamination) is set at |log2| = 0.3, corresponding to a ratio range of 0.81&#8211;1.23. This captures measurement noise at typical panel depths:</p>
+
+  <table>
+    <thead>
+      <tr><th>Read depth</th><th>SE(log2 ratio)</th><th>3&#963; range</th><th>Captured by 0.3?</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>99 (minimum)</td><td>0.205</td><td>&#177;0.615</td><td>&#177;1.5&#963; (87%)</td></tr>
+      <tr><td>200</td><td>0.144</td><td>&#177;0.433</td><td>&#177;2.1&#963; (96%)</td></tr>
+      <tr><td>500</td><td>0.091</td><td>&#177;0.274</td><td>&#177;3.3&#963; (99.9%)</td></tr>
+      <tr><td>1000 (typical)</td><td>0.065</td><td>&#177;0.194</td><td>&#177;4.6&#963; (~100%)</td></tr>
+    </tbody>
+  </table>
+
+  <p>At typical panel depth (1000x), essentially all germline noise falls within the unity zone. Contamination at fractions up to 81% produces peaks outside this zone and is detected.</p>
+
+  <div class="callout green">
+    <span class="tag">Detection range</span>
+    <p>The tool detects contamination fractions from ~3% (limited by VAF floor) up to ~81%. Above 81%, the signal falls inside the unity zone but manifests as a near-complete sample swap &#8212; captured by the <strong>overall peak</strong> instead.</p>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<section id="flagging">
+  <h2><span class="sec-num">05</span> Flagging Thresholds</h2>
+
+  <p>A pair is flagged only when <strong>all three</strong> conditions are met simultaneously:</p>
+
+  <div class="card-grid">
+    <div class="card">
+      <div class="card-head">
+        <div class="card-icon" style="background:var(--accent-soft)">
+          <svg width="20" height="20" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="10" width="4" height="7" rx="1" fill="#005eb8"/><rect x="8" y="6" width="4" height="11" rx="1" fill="#005eb8"/><rect x="13" y="2" width="4" height="15" rx="1" fill="#005eb8"/></svg>
+        </div>
+        <div>
+          <div class="card-name">peak_count &#8805; 10</div>
+          <div class="card-sub">Non-unity peak strength</div>
+        </div>
+      </div>
+      <p>The non-unity peak must contain at least 10 variants from independent genomic loci, all at a consistent non-unity ratio. This ensures the signal is not from a few linked variants.</p>
+      <span class="pill blue">Default: 10</span>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <div class="card-icon" style="background:var(--accent-soft)">
+          <svg width="20" height="20" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path d="M2 16 L6 4 L10 12 L14 2 L18 10" stroke="#005eb8" stroke-width="2" fill="none"/></svg>
+        </div>
+        <div>
+          <div class="card-name">n_shared_z &#8805; 2.0</div>
+          <div class="card-sub">Within-run z-score of n_shared</div>
+        </div>
+      </div>
+      <p>The pair must share more variants than typical for this run. Contamination increases shared variant count because source variants appear in the recipient.</p>
+      <span class="pill blue">Default: 2.0</span>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <div class="card-icon" style="background:var(--amber-soft)">
+          <svg width="20" height="20" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><circle cx="10" cy="10" r="7" stroke="#b35c00" stroke-width="2" fill="none"/><line x1="10" y1="6" x2="10" y2="11" stroke="#b35c00" stroke-width="2"/><circle cx="10" cy="14" r="1" fill="#b35c00"/></svg>
+        </div>
+        <div>
+          <div class="card-name">FREEMIX &#8805; 15%</div>
+          <div class="card-sub">VerifyBamID cross-contamination estimate</div>
+        </div>
+      </div>
+      <p>When a FREEMIX file is provided, the recipient&#8217;s VerifyBamID estimate must also be elevated. This removes somatic artefacts where the BAM is clean but VCF ratios appear suspicious.</p>
+      <span class="pill amber">Optional (requires --freemix-file)</span>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <div class="card-icon" style="background:var(--green-soft)">
+          <svg width="20" height="20" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path d="M4 10 L8 14 L16 6" stroke="#1a6e47" stroke-width="2.5" fill="none"/></svg>
+        </div>
+        <div>
+          <div class="card-name">n_shared &#8805; 10</div>
+          <div class="card-sub">Minimum shared variants</div>
+        </div>
+      </div>
+      <p>At least 10 shared variants must exist to even assess the pair. With fewer, ratio statistics are unreliable.</p>
+      <span class="pill green">Pre-condition</span>
+    </div>
+  </div>
+
+  <figure>
+  <div class="fig-wrap">
+  <svg viewBox="0 0 820 320" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Scatter plot showing dual-threshold flagging with peak_count on y-axis and n_shared_z on x-axis">
+    <style>
+      .ax-t{font:11px -apple-system,sans-serif}
+    </style>
+    <text x="20" y="18" font-size="10" letter-spacing="2" fill="#6b7c8d">DUAL-THRESHOLD SCATTER</text>
+
+    <!-- Axes -->
+    <line x1="80" y1="270" x2="750" y2="270" stroke="#354656" stroke-width="1.5"/>
+    <line x1="80" y1="270" x2="80" y2="30" stroke="#354656" stroke-width="1.5"/>
+
+    <!-- Axis labels -->
+    <text x="415" y="305" text-anchor="middle" font-size="12" fill="#354656">n_shared_z (within-run z-score)</text>
+    <text x="30" y="150" text-anchor="middle" font-size="12" fill="#354656" transform="rotate(-90 30 150)">peak_count</text>
+
+    <!-- Grid and threshold lines -->
+    <!-- peak_count = 10 threshold (horizontal) -->
+    <line x1="80" y1="190" x2="750" y2="190" stroke="#9b2335" stroke-width="1.5" stroke-dasharray="6 4"/>
+    <text x="755" y="194" class="ax-t" fill="#9b2335">peak_count = 10</text>
+
+    <!-- n_shared_z = 2.0 threshold (vertical) -->
+    <line x1="170" y1="30" x2="170" y2="270" stroke="#9b2335" stroke-width="1.5" stroke-dasharray="6 4"/>
+    <text x="175" y="25" class="ax-t" fill="#9b2335">z = 2.0</text>
+
+    <!-- Quadrant labels -->
+    <rect x="175" y="35" width="570" height="150" rx="4" fill="#fce8ea" opacity="0.3"/>
+    <text x="460" y="55" text-anchor="middle" font-size="12" fill="#9b2335" font-weight="bold">FLAGGED (both thresholds met)</text>
+
+    <text x="125" y="55" text-anchor="middle" font-size="10" fill="#6b7c8d">High peak,</text>
+    <text x="125" y="67" text-anchor="middle" font-size="10" fill="#6b7c8d">low z</text>
+
+    <text x="460" y="240" text-anchor="middle" font-size="10" fill="#6b7c8d">High z, low peak (elevated sharing but no ratio cluster)</text>
+
+    <text x="125" y="240" text-anchor="middle" font-size="10" fill="#1a6e47">CLEAN</text>
+
+    <!-- Clean dots (lower-left quadrant) -->
+    <circle cx="100" cy="255" r="3" fill="#1a6e47" opacity="0.5"/>
+    <circle cx="110" cy="250" r="3" fill="#1a6e47" opacity="0.5"/>
+    <circle cx="95" cy="260" r="3" fill="#1a6e47" opacity="0.5"/>
+    <circle cx="120" cy="248" r="3" fill="#1a6e47" opacity="0.5"/>
+    <circle cx="105" cy="258" r="3" fill="#1a6e47" opacity="0.5"/>
+    <circle cx="115" cy="252" r="3" fill="#1a6e47" opacity="0.5"/>
+    <circle cx="130" cy="245" r="3" fill="#1a6e47" opacity="0.5"/>
+    <circle cx="98" cy="253" r="3" fill="#1a6e47" opacity="0.5"/>
+    <circle cx="140" cy="255" r="3" fill="#1a6e47" opacity="0.5"/>
+    <circle cx="88" cy="262" r="3" fill="#1a6e47" opacity="0.5"/>
+    <circle cx="145" cy="252" r="3" fill="#1a6e47" opacity="0.5"/>
+    <circle cx="135" cy="260" r="3" fill="#1a6e47" opacity="0.5"/>
+    <circle cx="160" cy="253" r="3" fill="#1a6e47" opacity="0.5"/>
+    <circle cx="125" cy="265" r="3" fill="#1a6e47" opacity="0.5"/>
+    <circle cx="155" cy="258" r="3" fill="#1a6e47" opacity="0.5"/>
+
+    <!-- LOH artefacts (high peak, low z - upper-left) -->
+    <circle cx="120" cy="170" r="4" fill="#b35c00" opacity="0.7"/>
+    <circle cx="135" cy="160" r="4" fill="#b35c00" opacity="0.7"/>
+    <circle cx="110" cy="175" r="4" fill="#b35c00" opacity="0.7"/>
+    <text x="100" y="145" font-size="10" fill="#b35c00">LOH artefacts</text>
+    <text x="100" y="157" font-size="10" fill="#b35c00">(caught by z threshold)</text>
+
+    <!-- Flagged (upper-right quadrant) -->
+    <circle cx="350" cy="100" r="5" fill="#9b2335"/>
+    <circle cx="420" cy="80" r="5" fill="#9b2335"/>
+    <circle cx="500" cy="70" r="6" fill="#9b2335"/>
+    <circle cx="550" cy="60" r="6" fill="#9b2335"/>
+    <circle cx="300" cy="150" r="4" fill="#9b2335"/>
+    <circle cx="600" cy="90" r="5" fill="#9b2335"/>
+    <circle cx="650" cy="50" r="7" fill="#9b2335"/>
+    <circle cx="250" cy="170" r="4" fill="#9b2335"/>
+    <circle cx="380" cy="130" r="4" fill="#9b2335"/>
+
+    <!-- X-axis ticks -->
+    <text x="80" y="285" text-anchor="middle" class="ax-t" fill="#6b7c8d">0</text>
+    <text x="170" y="285" text-anchor="middle" class="ax-t" fill="#6b7c8d">2</text>
+    <text x="260" y="285" text-anchor="middle" class="ax-t" fill="#6b7c8d">4</text>
+    <text x="350" y="285" text-anchor="middle" class="ax-t" fill="#6b7c8d">6</text>
+    <text x="440" y="285" text-anchor="middle" class="ax-t" fill="#6b7c8d">8</text>
+    <text x="530" y="285" text-anchor="middle" class="ax-t" fill="#6b7c8d">10</text>
+    <text x="620" y="285" text-anchor="middle" class="ax-t" fill="#6b7c8d">12</text>
+    <text x="710" y="285" text-anchor="middle" class="ax-t" fill="#6b7c8d">14</text>
+
+    <!-- Y-axis ticks -->
+    <text x="70" y="274" text-anchor="end" class="ax-t" fill="#6b7c8d">0</text>
+    <text x="70" y="194" text-anchor="end" class="ax-t" fill="#6b7c8d">10</text>
+    <text x="70" y="114" text-anchor="end" class="ax-t" fill="#6b7c8d">20</text>
+    <text x="70" y="34" text-anchor="end" class="ax-t" fill="#6b7c8d">30</text>
+  </svg>
+  </div>
+  <figcaption>Figure 7 &#183; Dual-threshold flagging. Both peak_count &#8805; 10 AND n_shared_z &#8805; 2.0 must be met (red shaded quadrant). This catches LOH artefacts (amber dots, upper-left) that have high peak_count but normal z-scores because the elevated sharing is not pair-specific.</figcaption>
+  </figure>
+
+  <h3>Why two thresholds?</h3>
+  <p>Each threshold catches a different class of false positive:</p>
+  <ul>
+    <li><strong>peak_count alone</strong> would flag somatic LOH samples (cancer driver genes at AF=1.0 create false peaks of 4&#8211;8 variants). The z-score requirement catches these because total variant sharing is not elevated.</li>
+    <li><strong>n_shared_z alone</strong> would flag samples that happen to share many common germline variants (high n_shared) without any ratio clustering. The peak_count requirement catches these.</li>
+  </ul>
+
+  <div class="callout blue">
+    <span class="tag">Linkage disequilibrium</span>
+    <p>Multiple variants in the same gene on the same haplotype (e.g. 5 PRPF8 SNPs) produce linked false peaks of 4&#8211;5 variants. These fall below the peak_count threshold of 10. Genuine contamination produces 10&#8211;28 variants from <strong>multiple independent loci</strong> spanning different chromosomes.</p>
+  </div>
+
+  <h3>Within-run z-scoring</h3>
+  <p>The z-score of n_shared is always computed <strong>within a single run</strong> (all pairs from that sequencing batch), never globally. This is critical because:</p>
+  <ul>
+    <li>Newer VEP config (gnomADg + gnomADe): mean n_shared &#8776; 19, SD &#8776; 4.9</li>
+    <li>Older VEP config (gnomADe only): mean n_shared &#8776; 8, SD &#8776; 2.9</li>
+    <li>A global SD would blend these populations and produce biased z-scores in both directions</li>
+  </ul>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<section id="false-positives">
+  <h2><span class="sec-num">06</span> Known False Positives</h2>
+
+  <p>The retrospective analysis identified four patterns that can produce false or misleading signals. Reviewers should understand these when interpreting results:</p>
+
+  <div class="card-grid">
+    <div class="card">
+      <div class="card-head">
+        <div class="card-icon" style="background:var(--amber-soft)">
+          <svg width="20" height="20" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="3" width="14" height="14" rx="2" stroke="#b35c00" stroke-width="1.5" fill="none"/><line x1="3" y1="10" x2="17" y2="10" stroke="#b35c00" stroke-width="1.5"/></svg>
+        </div>
+        <div>
+          <div class="card-name">Somatic LOH</div>
+          <div class="card-sub">Cancer driver genes at AF &#8776; 1.0</div>
+        </div>
+      </div>
+      <p>High-purity tumours with loss-of-heterozygosity show somatic variants at AF=1.0. Any unrelated het sample produces log2(0.5/1.0) = &#8722;1.0 exactly. <strong>Diagnostic:</strong> same sample is &#8220;source&#8221; against many others, all at ratio exactly 0.5; FREEMIX normal.</p>
+      <span class="pill amber">Caught by FREEMIX filter</span>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <div class="card-icon" style="background:var(--purple-soft)">
+          <svg width="20" height="20" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><circle cx="8" cy="10" r="5" stroke="#4b2d8e" stroke-width="1.5" fill="none"/><circle cx="13" cy="10" r="5" stroke="#4b2d8e" stroke-width="1.5" fill="none"/></svg>
+        </div>
+        <div>
+          <div class="card-name">Bone Marrow Chimerism</div>
+          <div class="card-sub">Post-transplant mixed DNA</div>
+        </div>
+      </div>
+      <p>Post-HSCT patients have mixed donor/recipient DNA &#8212; mechanistically identical to contamination. <strong>Diagnostic:</strong> reproducible across runs of same patient; FREEMIX 18&#8211;47%; appears as recipient vs many sources.</p>
+      <span class="pill purple">Indistinguishable from contamination in VCF</span>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <div class="card-icon" style="background:var(--red-soft)">
+          <svg width="20" height="20" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path d="M10 3 L17 17 L3 17 Z" stroke="#9b2335" stroke-width="1.5" fill="none"/></svg>
+        </div>
+        <div>
+          <div class="card-name">Engineered Cell Lines</div>
+          <div class="card-sub">Control samples with synthetic variants</div>
+        </div>
+      </div>
+      <p>Cell line controls carry engineered variants that produce the highest signals in any cohort (peak=28, nz=13.45). <strong>Mitigation:</strong> exclude controls with <code>--exclude "*Q*"</code> via dx_fetch.</p>
+      <span class="pill red">Exclude from screening</span>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <div class="card-icon" style="background:var(--accent-soft)">
+          <svg width="20" height="20" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path d="M3 10 L8 10 L10 5 L12 15 L14 10 L17 10" stroke="#005eb8" stroke-width="1.5" fill="none"/></svg>
+        </div>
+        <div>
+          <div class="card-name">Transitive Contamination</div>
+          <div class="card-sub">Secondary signal from heavily contaminated sample</div>
+        </div>
+      </div>
+      <p>If Y is 50% contaminated by Z, Y now carries Z&#8217;s variants at ~25% VAF. Other samples sharing Z&#8217;s germline may flag against Y. <strong>Diagnostic:</strong> Y is recipient in high-confidence pairs AND spurious source in weaker pairs.</p>
+      <span class="pill blue">Inspect detail TSVs</span>
+    </div>
+  </div>
+
+  <figure>
+  <div class="fig-wrap">
+  <svg viewBox="0 0 820 200" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Diagnostic decision tree for distinguishing true contamination from artefacts">
+    <text x="20" y="18" font-size="10" letter-spacing="2" fill="#6b7c8d">DIAGNOSTIC DECISION TREE</text>
+    <defs>
+      <marker id="arr4" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+        <path d="M0,0 L8,3 L0,6" fill="#354656"/>
+      </marker>
+    </defs>
+
+    <!-- Start -->
+    <rect x="300" y="35" width="220" height="35" rx="6" fill="#005eb8"/>
+    <text x="410" y="57" text-anchor="middle" font-size="12" fill="#ffffff" font-weight="bold">Pair flagged (peak &#8805; 10, z &#8805; 2.0)</text>
+
+    <!-- Branch: FREEMIX -->
+    <line x1="350" y1="70" x2="200" y2="100" stroke="#354656" stroke-width="1" marker-end="url(#arr4)"/>
+    <line x1="470" y1="70" x2="620" y2="100" stroke="#354656" stroke-width="1" marker-end="url(#arr4)"/>
+
+    <text x="260" y="88" font-size="10" fill="#6b7c8d">FREEMIX &lt; 1%</text>
+    <text x="530" y="88" font-size="10" fill="#6b7c8d">FREEMIX &#8805; 15%</text>
+
+    <!-- Left: LOH -->
+    <rect x="100" y="100" width="200" height="35" rx="6" fill="#fdf0e0" stroke="#b35c00"/>
+    <text x="200" y="122" text-anchor="middle" font-size="11" fill="#b35c00" font-weight="bold">Likely somatic LOH artefact</text>
+
+    <!-- Right: Real signal -->
+    <rect x="520" y="100" width="200" height="35" rx="6" fill="#fce8ea" stroke="#9b2335"/>
+    <text x="620" y="122" text-anchor="middle" font-size="11" fill="#9b2335" font-weight="bold">True contamination or chimerism</text>
+
+    <!-- Sub-branch right -->
+    <line x1="570" y1="135" x2="470" y2="160" stroke="#354656" stroke-width="1" marker-end="url(#arr4)"/>
+    <line x1="670" y1="135" x2="700" y2="160" stroke="#354656" stroke-width="1" marker-end="url(#arr4)"/>
+
+    <text x="500" y="153" font-size="10" fill="#6b7c8d">Reproducible</text>
+    <text x="500" y="163" font-size="10" fill="#6b7c8d">across runs?</text>
+
+    <rect x="370" y="165" width="190" height="30" rx="6" fill="#ede8f8" stroke="#4b2d8e"/>
+    <text x="465" y="184" text-anchor="middle" font-size="11" fill="#4b2d8e" font-weight="bold">Bone marrow chimerism</text>
+
+    <rect x="610" y="165" width="190" height="30" rx="6" fill="#fce8ea" stroke="#9b2335"/>
+    <text x="705" y="184" text-anchor="middle" font-size="11" fill="#9b2335" font-weight="bold">Cross-sample contamination</text>
+  </svg>
+  </div>
+  <figcaption>Figure 8 &#183; Diagnostic decision tree. FREEMIX value is the primary discriminator between somatic artefacts and real contamination. Clinical context (transplant history) distinguishes chimerism from true contamination.</figcaption>
+  </figure>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<section id="freemix">
+  <h2><span class="sec-num">07</span> FREEMIX Correlation</h2>
+
+  <p>VerifyBamID FREEMIX estimates contamination from the BAM at germline SNP positions. The two tools are <strong>complementary, not redundant</strong>:</p>
+
+  <figure>
+  <div class="fig-wrap">
+  <svg viewBox="0 0 820 280" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Bar chart showing concordance between FREEMIX bands and contamination screen flagging">
+    <text x="20" y="18" font-size="10" letter-spacing="2" fill="#6b7c8d">CONCORDANCE BAR CHART</text>
+
+    <!-- Axes -->
+    <line x1="120" y1="240" x2="700" y2="240" stroke="#354656" stroke-width="1.5"/>
+    <line x1="120" y1="240" x2="120" y2="40" stroke="#354656" stroke-width="1.5"/>
+
+    <!-- Y-axis gridlines -->
+    <line x1="120" y1="200" x2="700" y2="200" stroke="#e0e7ef" stroke-width="1" stroke-dasharray="4 4"/>
+    <line x1="120" y1="160" x2="700" y2="160" stroke="#e0e7ef" stroke-width="1" stroke-dasharray="4 4"/>
+    <line x1="120" y1="120" x2="700" y2="120" stroke="#e0e7ef" stroke-width="1" stroke-dasharray="4 4"/>
+    <line x1="120" y1="80" x2="700" y2="80" stroke="#e0e7ef" stroke-width="1" stroke-dasharray="4 4"/>
+
+    <!-- Y-axis labels -->
+    <text x="110" y="244" text-anchor="end" font-size="11" fill="#6b7c8d">0%</text>
+    <text x="110" y="204" text-anchor="end" font-size="11" fill="#6b7c8d">20%</text>
+    <text x="110" y="164" text-anchor="end" font-size="11" fill="#6b7c8d">40%</text>
+    <text x="110" y="124" text-anchor="end" font-size="11" fill="#6b7c8d">60%</text>
+    <text x="110" y="84" text-anchor="end" font-size="11" fill="#6b7c8d">80%</text>
+    <text x="110" y="44" text-anchor="end" font-size="11" fill="#6b7c8d">100%</text>
+
+    <!-- Bar 1: FREEMIX < 5% -->
+    <rect x="200" y="212" width="80" height="28" rx="4" fill="#005eb8" opacity="0.6"/>
+    <text x="240" y="230" text-anchor="middle" font-size="12" fill="#ffffff" font-weight="bold">14%</text>
+    <text x="240" y="260" text-anchor="middle" font-size="12" fill="#354656" font-weight="bold">&lt; 5%</text>
+
+    <!-- Bar 2: FREEMIX 5-25% -->
+    <rect x="380" y="224" width="80" height="16" rx="4" fill="#b35c00" opacity="0.7"/>
+    <text x="420" y="238" text-anchor="middle" font-size="12" fill="#ffffff" font-weight="bold">8%</text>
+    <text x="420" y="260" text-anchor="middle" font-size="12" fill="#354656" font-weight="bold">5&#8211;25%</text>
+
+    <!-- Bar 3: FREEMIX > 25% -->
+    <rect x="560" y="62" width="80" height="178" rx="4" fill="#9b2335" opacity="0.8"/>
+    <text x="600" y="160" text-anchor="middle" font-size="16" fill="#ffffff" font-weight="bold">89%</text>
+    <text x="600" y="260" text-anchor="middle" font-size="12" fill="#354656" font-weight="bold">&gt; 25%</text>
+
+    <!-- Axis titles -->
+    <text x="410" y="278" text-anchor="middle" font-size="12" fill="#354656">VerifyBamID FREEMIX band</text>
+    <text x="55" y="140" text-anchor="middle" font-size="12" fill="#354656" transform="rotate(-90 55 140)">Also flagged by contam. screen</text>
+  </svg>
+  </div>
+  <figcaption>Figure 9 &#183; Concordance between VerifyBamID FREEMIX and the contamination screen. At FREEMIX &gt;25%, 89% of samples are also flagged by our tool. The tools detect the same events but provide different information.</figcaption>
+  </figure>
+
+  <table>
+    <thead>
+      <tr><th>Capability</th><th>VerifyBamID</th><th>Contamination Screen</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Detects recipients</td><td>&#10003; Sensitive</td><td>&#10003; Via non-unity peak</td></tr>
+      <tr><td>Identifies source</td><td>&#10007;</td><td>&#10003; Directionality from ratio sign</td></tr>
+      <tr><td>Estimates fraction</td><td>&#10003; (FREEMIX %)</td><td>&#10003; (from peak position)</td></tr>
+      <tr><td>Distinguishes primary/transitive</td><td>&#10007;</td><td>&#10003; From pair topology</td></tr>
+      <tr><td>Works at low levels (&lt;5%)</td><td>&#10003;</td><td>Limited (few markers)</td></tr>
+      <tr><td>Plate-position awareness</td><td>&#10007;</td><td>&#10003; (matrix ordering)</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout green">
+    <span class="tag">Key insight</span>
+    <p><strong>Sources</strong> have near-normal FREEMIX (~0.3%) because their own library is clean. The contamination screen is the only tool that identifies them &#8212; FREEMIX cannot tell you where the contamination came from.</p>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<section id="validation">
+  <h2><span class="sec-num">08</span> Validation Results</h2>
+
+  <h3>Initial development: 26TULIP24 (3 samples)</h3>
+  <p>Developed on a known contamination event where adjacent plate wells (A4/B4) produced cross-sample contamination at ~50%.</p>
+
+  <table>
+    <thead>
+      <tr><th>Pair</th><th>True status</th><th>n_shared</th><th>peak_count</th><th>n_shared_z</th><th>Flagged?</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>A vs B</td><td><strong>Contaminated (~50%)</strong></td><td>57</td><td>17</td><td>7.20</td><td><span class="pill red">Yes</span></td></tr>
+      <tr><td>B vs C</td><td>Clean</td><td>31</td><td>5 (linked PRPF8)</td><td>1.50</td><td><span class="pill green">No</span></td></tr>
+      <tr><td>C vs A</td><td>Clean</td><td>25</td><td>4 (linked PRPF8)</td><td>0.59</td><td><span class="pill green">No</span></td></tr>
+    </tbody>
+  </table>
+
+  <h3>Retrospective cohort: 100 runs (Mar 2025 &#8211; May 2026)</h3>
+
+  <div class="stats">
+    <div class="stat">
+      <div class="n">100</div>
+      <div class="l">Consecutive runs screened</div>
+    </div>
+    <div class="stat">
+      <div class="n">97,310</div>
+      <div class="l">Pairwise comparisons</div>
+    </div>
+    <div class="stat">
+      <div class="n">13</div>
+      <div class="l">Known contaminated/chimeric samples identified</div>
+    </div>
+    <div class="stat">
+      <div class="n">43/100</div>
+      <div class="l">Runs with &#8805; 1 flagged pair</div>
+    </div>
+  </div>
+
+  <h4>Known events detected</h4>
+  <table>
+    <thead>
+      <tr><th>Category</th><th>Samples</th><th>Signal strength</th><th>Mechanism</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><span class="pill red">True contamination</span></td><td>26093K0005, 26051K0066</td><td>peak=27, nz=9.26</td><td>Plate adjacency, DNA dilution plate</td></tr>
+      <tr><td><span class="pill purple">Chimerism</span></td><td>25351K0007, 25238K0026, 25297K0087, 25294K0086, 25197K0070</td><td>FREEMIX 18&#8211;47%</td><td>Post-HSCT mixed DNA</td></tr>
+      <tr><td><span class="pill amber">Cell line</span></td><td>25309K0027</td><td>peak=28, nz=13.45</td><td>Engineered variants (highest signal)</td></tr>
+      <tr><td><span class="pill blue">Borderline</span></td><td>26055K0076, 26043K0075, 26037K0079</td><td>Variable</td><td>Transitive, LOH, investigate</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout blue">
+    <span class="tag">FREEMIX threshold rationale</span>
+    <p>15% was chosen because: all confirmed contamination/chimerism had FREEMIX 18.7&#8211;47%. A 20% threshold would miss 2 known chimeric samples (18.7%, 18.8%). The gap between 18.7% (lowest chimeric) and 11% (next uncertain) gives comfortable margin without adding noise from the 5&#8211;11% range.</p>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+
+
+<!-- RETROSPECTIVE EVIDENCE -->
+<section id="retro-data">
+  <h2><span class="sec-num">09</span> Retrospective Evidence</h2>
+
+  <p>The three interactive charts below are the actual data behind the threshold and design decisions. Drawn from the 100-run retrospective cohort (97,310 pairwise comparisons, ~4,400 samples). Hover to see sample details, zoom, and toggle legend traces.</p>
+
+  <div class="callout blue">
+    <span class="tag">Viewing these charts</span>
+    <p>Charts are loaded from S3 and display fully with an internet connection. When viewing offline from the local repo, replace the <code>src</code> URL with the relative <code>retrospective/</code> path. Direct S3 links are provided under each chart.</p>
+  </div>
+
+  <h3>Chart 1 — Threshold exploration</h3>
+  <p>A 4-panel dashboard: peak_count vs n_shared_z coloured by FREEMIX; FREEMIX distributions by threshold bin. 2,953 samples, 70 runs (gnomADg+gnomADe config). <strong>What to look for:</strong> the clean separation in FREEMIX between the flagged quadrant (top-right) and the rest; bimodal FREEMIX distributions at the threshold cuts show the thresholds land in a genuine gap.</p>
+
+  <figure>
+  <div class="fig-wrap" style="padding:0;overflow:hidden;background:#f7f9fb">
+    <iframe src="https://003-260510-docs-for-sharing.s3.eu-west-2.amazonaws.com/threshold_exploration.html" width="100%" height="720" frameborder="0" scrolling="no" style="display:block" title="Threshold exploration dashboard"><p style="padding:20px;color:#6b7c8d">Chart not available. <a href="https://003-260510-docs-for-sharing.s3.eu-west-2.amazonaws.com/threshold_exploration.html">Open directly</a>.</p></iframe>
+  </div>
+  <figcaption>Figure 12 · Threshold exploration dashboard. 2,953 samples, 70 runs (RUN001–070). peak_count vs n_shared_z coloured by FREEMIX, with FREEMIX box plots by threshold bin. <a href="https://003-260510-docs-for-sharing.s3.eu-west-2.amazonaws.com/threshold_exploration.html">Open full interactive version</a>.</figcaption>
+  </figure>
+
+  <h3>Chart 2 — FREEMIX vs contamination screen scores (100 runs)</h3>
+  <p>FREEMIX % vs max peak_count (left) and max n_shared_z within-run (right) for 4,360 samples, coloured by role. <strong>What to look for:</strong> sources cluster near FREEMIX ~0% despite high signal; the two-population n_shared_z structure (two VEP config generations); all FREEMIX &gt;15% recipients captured above peak_count threshold.</p>
+
+  <figure>
+  <div class="fig-wrap" style="padding:0;overflow:hidden;background:#f7f9fb">
+    <iframe src="https://003-260510-docs-for-sharing.s3.eu-west-2.amazonaws.com/freemix_vs_contamination_100runs.html" width="100%" height="680" frameborder="0" scrolling="no" style="display:block" title="FREEMIX vs contamination screen scores 100 runs"><p style="padding:20px;color:#6b7c8d">Chart not available. <a href="https://003-260510-docs-for-sharing.s3.eu-west-2.amazonaws.com/freemix_vs_contamination_100runs.html">Open directly</a>.</p></iframe>
+  </div>
+  <figcaption>Figure 13 · FREEMIX vs contamination screen scores — 100 runs, 4,360 samples. Sources have near-normal FREEMIX (&lt;1%). Threshold lines at peak_count=10 and n_shared_z=2.0 shown. <a href="https://003-260510-docs-for-sharing.s3.eu-west-2.amazonaws.com/freemix_vs_contamination_100runs.html">Open full interactive version</a>.</figcaption>
+  </figure>
+
+  <h3>Chart 3 — Within-run vs global z-score normalisation</h3>
+  <p>Side-by-side: n_shared_z within-run (left) vs global (right) for 1,432 samples, 34 runs. <strong>What to look for:</strong> global normalisation inflates z-scores for older VEP config samples and suppresses newer ones — a systematic bias. Within-run normalisation correctly separates contaminated from clean for both configs.</p>
+
+  <figure>
+  <div class="fig-wrap" style="padding:0;overflow:hidden;background:#f7f9fb">
+    <iframe src="https://003-260510-docs-for-sharing.s3.eu-west-2.amazonaws.com/freemix_vs_nshared_z_comparison.html" width="100%" height="680" frameborder="0" scrolling="no" style="display:block" title="Within-run vs global z-score normalisation"><p style="padding:20px;color:#6b7c8d">Chart not available. <a href="https://003-260510-docs-for-sharing.s3.eu-west-2.amazonaws.com/freemix_vs_nshared_z_comparison.html">Open directly</a>.</p></iframe>
+  </div>
+  <figcaption>Figure 14 · Within-run vs global n_shared z-score normalisation. Within-run (left) works correctly across both VEP config generations; global (right) is biased by the config boundary. <a href="https://003-260510-docs-for-sharing.s3.eu-west-2.amazonaws.com/freemix_vs_nshared_z_comparison.html">Open full interactive version</a>.</figcaption>
+  </figure>
+
+</section>
+
+<section id="interpretation">
+  <h2><span class="sec-num">10</span> Interpretation Guide</h2>
+
+  <p>When reviewing output, use this decision framework:</p>
+
+  <figure>
+  <div class="fig-wrap">
+  <svg viewBox="0 0 820 280" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Interpretation matrix showing what different signal combinations mean">
+    <text x="20" y="18" font-size="10" letter-spacing="2" fill="#6b7c8d">INTERPRETATION MATRIX</text>
+
+    <!-- Header row -->
+    <rect x="30" y="35" width="760" height="30" rx="4" fill="#f0f4f8"/>
+    <text x="180" y="55" text-anchor="middle" font-size="12" fill="#354656" font-weight="bold">Signal pattern</text>
+    <text x="550" y="55" text-anchor="middle" font-size="12" fill="#354656" font-weight="bold">Interpretation</text>
+
+    <!-- Row 1 -->
+    <rect x="30" y="70" width="760" height="38" rx="0" fill="#fce8ea" opacity="0.4"/>
+    <text x="50" y="93" font-size="12" fill="#354656">peak_count &#8805; 10, n_shared_z &#8805; 2.0, FREEMIX &#8805; 15%</text>
+    <text x="550" y="93" text-anchor="middle" font-size="12" fill="#9b2335" font-weight="bold">Strong evidence: contamination or chimerism</text>
+
+    <!-- Row 2 -->
+    <rect x="30" y="112" width="760" height="38" rx="0" fill="#fdf0e0" opacity="0.4"/>
+    <text x="50" y="135" font-size="12" fill="#354656">peak_count 7&#8211;9, n_shared_z 1.5&#8211;2.0</text>
+    <text x="550" y="135" text-anchor="middle" font-size="12" fill="#b35c00" font-weight="bold">Borderline &#8212; inspect detail TSV</text>
+
+    <!-- Row 3 -->
+    <rect x="30" y="154" width="760" height="38" rx="0" fill="#fdf0e0" opacity="0.4"/>
+    <text x="50" y="177" font-size="12" fill="#354656">High peak_count, FREEMIX &lt; 1%, peak_log2 = exactly &#8722;1.0</text>
+    <text x="550" y="177" text-anchor="middle" font-size="12" fill="#b35c00" font-weight="bold">Somatic LOH artefact (not contamination)</text>
+
+    <!-- Row 4 -->
+    <rect x="30" y="196" width="760" height="38" rx="0" fill="#e0f0e8" opacity="0.4"/>
+    <text x="50" y="219" font-size="12" fill="#354656">Large overall peak at ratio=1 (many variants)</text>
+    <text x="550" y="219" text-anchor="middle" font-size="12" fill="#1a6e47" font-weight="bold">Sample swap / duplicate / same patient</text>
+
+    <!-- Row 5 -->
+    <rect x="30" y="238" width="760" height="38" rx="0" fill="#e0f0e8" opacity="0.4"/>
+    <text x="50" y="261" font-size="12" fill="#354656">No significant peaks, low n_shared</text>
+    <text x="550" y="261" text-anchor="middle" font-size="12" fill="#1a6e47" font-weight="bold">Clean pair &#8212; no action needed</text>
+  </svg>
+  </div>
+  <figcaption>Figure 10 &#183; Interpretation matrix for common signal patterns in the summary output.</figcaption>
+  </figure>
+
+  <h3>Inspecting detail TSVs for borderline cases</h3>
+  <p>When a pair is borderline, check the per-variant detail file:</p>
+  <ul>
+    <li><strong>Multi-chromosome signal:</strong> variants spanning &#8805; 3 chromosomes = contamination (independent loci)</li>
+    <li><strong>Single-gene cluster:</strong> 4&#8211;5 variants all in one gene (e.g. PRPF8) = linkage disequilibrium (false positive)</li>
+    <li><strong>Source AF &#8776; 1.0:</strong> if the &#8220;source&#8221; sample has AF near 1.0 at in-peak positions = somatic LOH, not contamination</li>
+    <li><strong>Source AF &#8776; 0.5:</strong> typical germline het = genuine contamination signal</li>
+  </ul>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<section id="outputs">
+  <h2><span class="sec-num">11</span> Output Files</h2>
+
+  <figure>
+  <div class="fig-wrap">
+  <svg viewBox="0 0 820 200" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Output directory structure diagram">
+    <text x="20" y="18" font-size="10" letter-spacing="2" fill="#6b7c8d">OUTPUT DIRECTORY STRUCTURE</text>
+
+    <!-- Directory tree -->
+    <text x="40" y="50" font-size="14" font-family="ui-monospace,Menlo,monospace" fill="#003d78" font-weight="bold">results/</text>
+    <text x="60" y="75" font-size="13" font-family="ui-monospace,Menlo,monospace" fill="#354656">&#9500;&#9472;&#9472; filtered/</text>
+    <text x="250" y="75" font-size="11" fill="#6b7c8d">Quality-filtered VCFs (cached for re-runs)</text>
+    <text x="60" y="100" font-size="13" font-family="ui-monospace,Menlo,monospace" fill="#354656">&#9500;&#9472;&#9472; summary.tsv</text>
+    <text x="250" y="100" font-size="11" fill="#6b7c8d">One row per pair &#8212; the main output</text>
+    <text x="60" y="125" font-size="13" font-family="ui-monospace,Menlo,monospace" fill="#354656">&#9500;&#9472;&#9472; matrix.tsv</text>
+    <text x="250" y="125" font-size="11" fill="#6b7c8d">N&#215;N directional contamination matrix (plate-ordered)</text>
+    <text x="60" y="150" font-size="13" font-family="ui-monospace,Menlo,monospace" fill="#354656">&#9500;&#9472;&#9472; flagged_pairs/*.tsv</text>
+    <text x="250" y="150" font-size="11" fill="#6b7c8d">Per-variant detail for top flagged pairs</text>
+    <text x="60" y="175" font-size="13" font-family="ui-monospace,Menlo,monospace" fill="#354656">&#9492;&#9472;&#9472; plots/*.png</text>
+    <text x="250" y="175" font-size="11" fill="#6b7c8d">Log2-ratio histograms (with --plots)</text>
+  </svg>
+  </div>
+  <figcaption>Figure 11 &#183; Output directory structure. summary.tsv and matrix.tsv cover all pairs; detail TSVs and plots are generated only for the top flagged pairs (default: top 10 by peak_count).</figcaption>
+  </figure>
+
+  <h3>Key columns in summary.tsv</h3>
+  <table>
+    <thead>
+      <tr><th>Column</th><th>What it means</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>n_shared</code></td><td>Total variants present in both samples (after filtering)</td></tr>
+      <tr><td><code>n_shared_z</code></td><td>How unusual this sharing is (z-score within the run)</td></tr>
+      <tr><td><code>peak_log2_ratio</code></td><td>Position of contamination peak on log2 scale</td></tr>
+      <tr><td><code>peak_count</code></td><td>Number of variants in the contamination peak</td></tr>
+      <tr><td><code>contamination_source</code></td><td>Which sample is the source (higher VAF)</td></tr>
+      <tr><td><code>contamination_recipient</code></td><td>Which sample is the recipient (diluted VAF)</td></tr>
+      <tr><td><code>contamination_fraction</code></td><td>Estimated fraction of recipient from source</td></tr>
+      <tr><td><code>recipient_freemix</code></td><td>VerifyBamID FREEMIX for recipient (if provided)</td></tr>
+      <tr><td><code>flagged</code></td><td>TRUE if all thresholds met</td></tr>
+    </tbody>
+  </table>
+
+  <h3>The contamination matrix</h3>
+  <p>The <code>matrix.tsv</code> is an N&#215;N grid where rows are recipients and columns are sources. The value in each cell is the <code>peak_count</code> from the non-unity peak. When ordered by plate position (<code>--plate-layout</code>), adjacent-well contamination appears as non-zero entries near the diagonal.</p>
+
+  <div class="callout blue">
+    <span class="tag">Reviewer tip</span>
+    <p>Open <code>matrix.tsv</code> in Excel and apply conditional formatting (colour scale) to quickly spot contamination patterns. Adjacent non-zero entries along a row indicate one sample contaminating multiple neighbours. A column with many non-zero values indicates a widespread source.</p>
+  </div>
+</section>
+
+</main>
+</div>
+
+<footer>
+  Contamination Screen Code Review Briefing &#8212; Joo Wook Ahn, 10 May 2026. Based on contamination_screen.py v1.0 validated against 100 consecutive haematological oncology sequencing runs (97,310 pairwise comparisons). For internal review by East Genomics Bioinformatics.
+</footer>
+
+</body>
+</html>

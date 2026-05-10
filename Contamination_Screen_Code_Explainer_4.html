@@ -1,0 +1,648 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Code Explainer 4 — Function Walkthrough</title>
+<style>
+  :root{
+    --ink:#0d1b2a; --ink-soft:#354656; --muted:#6b7c8d;
+    --line:#e0e7ef; --line-strong:#c5d0db;
+    --bg:#f7f9fb; --paper:#ffffff;
+    --accent:#005eb8; --accent-deep:#003d78; --accent-mid:#1a73c4; --accent-soft:#e3edf8;
+    --green:#1a6e47; --green-soft:#e0f0e8;
+    --amber:#b35c00; --amber-soft:#fdf0e0;
+    --red:#9b2335; --red-soft:#fce8ea;
+    --purple:#4b2d8e; --purple-soft:#ede8f8;
+    --shadow:0 1px 3px rgba(13,27,42,.05),0 4px 20px rgba(13,27,42,.08);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{background:var(--bg);color:var(--ink);
+    font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;}
+  a{color:var(--accent-mid);text-decoration:none}
+  a:hover{text-decoration:underline}
+  .layout{display:grid;grid-template-columns:270px minmax(0,1fr);max-width:1320px;margin:0 auto}
+  @media(max-width:860px){.layout{grid-template-columns:1fr}.toc{display:none}}
+  main{padding:0 56px 96px;max-width:900px}
+  h1{font-size:38px;line-height:1.1;letter-spacing:-.015em;font-weight:800;color:var(--ink);margin-bottom:14px;max-width:22ch}
+  h2{font-size:24px;font-weight:700;margin-bottom:16px;display:flex;align-items:center;gap:12px}
+  h2 .sec-num{font-size:12px;letter-spacing:.06em;text-transform:uppercase;background:var(--accent);color:#fff;padding:3px 9px;border-radius:999px;font-weight:700;white-space:nowrap}
+  h3{font-size:17px;font-weight:700;margin:28px 0 10px;color:var(--ink)}
+  h4{font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:20px 0 8px;font-weight:600}
+  p{margin-bottom:13px;color:var(--ink-soft)}
+  strong{color:var(--ink)}
+  ul,ol{margin:0 0 14px;padding-left:22px}
+  li{margin:5px 0;color:var(--ink-soft)}
+  code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;background:#f0f4f8;padding:2px 6px;border-radius:3px;color:var(--accent-deep)}
+  .toc{position:sticky;top:0;align-self:start;height:100vh;overflow-y:auto;padding:28px 24px;background:var(--paper);border-right:1px solid var(--line);font-size:13px}
+  .toc-brand{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--accent-deep);margin-bottom:20px;line-height:1.4}
+  .toc-section{font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin:18px 0 6px}
+  .toc ul{list-style:none}
+  .toc ul li a{display:block;padding:5px 0 5px 16px;color:var(--ink-soft);border-left:2px solid transparent;transition:all .15s;font-size:12.5px;line-height:1.4}
+  .toc ul li a:hover{color:var(--accent);border-left-color:var(--accent);text-decoration:none;padding-left:20px}
+  .toc .meta{margin-top:22px;padding-top:18px;border-top:1px solid var(--line);font-size:11.5px;color:var(--muted);line-height:1.6}
+  .hero{padding:52px 0 36px;border-bottom:1px solid var(--line);margin-bottom:8px}
+  .hero .eyebrow{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);font-weight:700;margin-bottom:12px}
+  .hero h1{font-size:38px;line-height:1.1;letter-spacing:-.015em;font-weight:800;color:var(--ink);margin-bottom:14px;max-width:22ch}
+  .hero .sub{font-size:17px;line-height:1.55;color:var(--ink-soft);max-width:64ch}
+  .hero .meta-row{display:flex;gap:24px;margin-top:20px;flex-wrap:wrap}
+  .hero .meta-item{font-size:12px;color:var(--muted)}
+  .hero .meta-item strong{color:var(--ink-soft)}
+  section{padding-top:52px}
+  section+section{border-top:1px solid var(--line)}
+  footer{padding:32px 56px;color:var(--muted);font-size:12px;border-top:1px solid var(--line);max-width:1320px;margin:0 auto;line-height:1.7}
+  .callout{border-radius:6px;padding:18px 22px;margin:18px 0;border:1px solid}
+  .callout.blue{border-color:#b3cce8;background:var(--accent-soft)}
+  .callout.green{border-color:#a8d4bb;background:var(--green-soft)}
+  .callout.amber{border-color:#e8c28a;background:var(--amber-soft)}
+  .callout.red{border-color:#e8a8a8;background:var(--red-soft)}
+  .callout.purple{border-color:#c5b8e8;background:var(--purple-soft)}
+  .callout .tag{display:block;font-size:11px;letter-spacing:.08em;text-transform:uppercase;font-weight:700;margin-bottom:6px}
+  .callout.blue .tag{color:var(--accent-deep)}
+  .callout.green .tag{color:var(--green)}
+  .callout.amber .tag{color:var(--amber)}
+  .callout.red .tag{color:var(--red)}
+  .callout.purple .tag{color:var(--purple)}
+  .callout p:last-child{margin:0}
+  table{width:100%;border-collapse:collapse;margin:16px 0;font-size:14px}
+  th,td{text-align:left;padding:11px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{background:#f0f4f8;font-weight:600;font-size:12.5px;color:var(--ink);letter-spacing:.02em}
+  tr:hover td{background:#fafbfd}
+  .pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:600;letter-spacing:.04em}
+  .pill.green{background:var(--green-soft);color:var(--green)}
+  .pill.amber{background:var(--amber-soft);color:var(--amber)}
+  .pill.blue{background:var(--accent-soft);color:var(--accent-deep)}
+  .pill.purple{background:var(--purple-soft);color:var(--purple)}
+  .pill.red{background:var(--red-soft);color:var(--red)}
+  .cb{background:#1e2d3d;border-radius:8px;padding:20px 22px;margin:16px 0;overflow-x:auto}
+  .cb pre{color:#cdd9e5;font:13px/1.75 ui-monospace,Menlo,Consolas,monospace;margin:0;white-space:pre}
+  .cb .c{color:#6e9cbf}
+  .cb .k{color:#79b8ff}
+  .cb .s{color:#9ecbff}
+  .cb .n{color:#b392f0}
+  .cb .f{color:#85e89d}
+  .cb .t{color:#ffab70}
+  .fn-box{border:1px solid var(--line);border-radius:8px;overflow:hidden;margin:0 0 36px}
+  .fn-header{background:var(--accent-deep);padding:14px 18px;display:flex;align-items:baseline;gap:16px;flex-wrap:wrap}
+  .fn-name{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:15px;color:#fff;font-weight:700}
+  .fn-lines{font-size:12px;color:#a8c8e8}
+  .fn-phase{font-size:11px;padding:2px 9px;border-radius:999px;font-weight:700;letter-spacing:.04em}
+  .fn-phase.p1{background:#b35c00;color:#fff}
+  .fn-phase.p2{background:#1a6e47;color:#fff}
+  .fn-phase.p3{background:#4b2d8e;color:#fff}
+  .fn-phase.p4{background:#9b2335;color:#fff}
+  .fn-phase.setup{background:#005eb8;color:#fff}
+  .fn-body{padding:18px}
+  .fn-body p{margin-bottom:10px}
+  .io-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:12px 0}
+  @media(max-width:640px){.io-grid{grid-template-columns:1fr}}
+  .io-box{background:#f7f9fb;border:1px solid var(--line);border-radius:6px;padding:12px}
+  .io-box h4{margin:0 0 6px}
+  .io-box ul{margin:0;padding-left:18px}
+  .io-box li{font-size:13px;margin:3px 0}
+  .series-nav{display:flex;gap:8px;flex-wrap:wrap;margin:18px 0}
+  .series-nav a{display:inline-block;padding:6px 14px;border-radius:6px;font-size:12.5px;font-weight:600;border:1px solid var(--line);background:var(--paper);color:var(--ink-soft)}
+  .series-nav a.current{background:var(--accent-deep);color:#fff;border-color:var(--accent-deep)}
+  .series-nav a:hover{border-color:var(--accent);color:var(--accent);text-decoration:none}
+</style>
+</head>
+<body>
+<div class="layout">
+
+<aside class="toc">
+  <div class="toc-brand">PERSONAL BRIEFING — CONTAMINATION SCREEN CODE<br>10 May 2026</div>
+  <div class="toc-section">Setup</div>
+  <ul>
+    <li><a href="#parse-args">parse_args()</a></li>
+    <li><a href="#run">_run()</a></li>
+    <li><a href="#get-sample-name">get_sample_name()</a></li>
+  </ul>
+  <div class="toc-section">Phase 1</div>
+  <ul>
+    <li><a href="#csq-gnomad">_csq_gnomad_fields()</a></li>
+    <li><a href="#filter-vcf">filter_vcf()</a></li>
+  </ul>
+  <div class="toc-section">Phase 2</div>
+  <ul>
+    <li><a href="#load-vcf">load_vcf()</a></li>
+  </ul>
+  <div class="toc-section">Phase 3</div>
+  <ul>
+    <li><a href="#find-peaks">_find_peaks()</a></li>
+    <li><a href="#compare">_compare()</a></li>
+    <li><a href="#worker">_worker()</a></li>
+  </ul>
+  <div class="toc-section">Phase 4</div>
+  <ul>
+    <li><a href="#load-freemix">_load_freemix()</a></li>
+    <li><a href="#apply-flags">_apply_flags()</a></li>
+    <li><a href="#write-fns">write_*() functions</a></li>
+  </ul>
+  <div class="toc-section">Orchestration</div>
+  <ul>
+    <li><a href="#main">main()</a></li>
+  </ul>
+  <div class="meta">Part 4 of 5<br>All 17 functions covered</div>
+</aside>
+
+<main>
+<header class="hero">
+  <div class="eyebrow">Code explainer · Part 4 of 5 · Function walkthrough</div>
+  <h1>Every function explained</h1>
+  <p class="sub">Purpose, inputs, outputs, key logic, and design decisions for all 17 functions in contamination_screen.py. Keep this document open alongside the code file.</p>
+  <div class="meta-row">
+    <span class="meta-item"><strong>Author</strong> Joo Wook Ahn</span>
+    <span class="meta-item"><strong>Date</strong> 10 May 2026</span>
+    <span class="meta-item"><strong>Covers</strong> All 17 functions, lines 54–1009</span>
+  </div>
+</header>
+
+<div class="series-nav">
+  <a href="Contamination_Screen_Code_Explainer_1.html">1 · High-level outline</a>
+  <a href="Contamination_Screen_Code_Explainer_2.html">2 · Module structure</a>
+  <a href="Contamination_Screen_Code_Explainer_3.html">3 · Key concepts</a>
+  <a href="Contamination_Screen_Code_Explainer_4.html" class="current">4 · Function walkthrough</a>
+  <a href="Contamination_Screen_Code_Explainer_5.html">5 · Line-by-line reference</a>
+</div>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<section id="parse-args">
+  <h2><span class="sec-num">Setup</span> Setup functions</h2>
+
+  <div class="fn-box">
+    <div class="fn-header">
+      <span class="fn-name">parse_args()</span>
+      <span class="fn-lines">Lines ~54–120</span>
+      <span class="fn-phase setup">Setup</span>
+    </div>
+    <div class="fn-body">
+      <p><strong>Purpose:</strong> defines every command-line argument, validates types, sets defaults, and returns a <code>Namespace</code> object. Every configurable setting in the tool lives here.</p>
+      <div class="io-grid">
+        <div class="io-box"><h4>Takes</h4><ul><li>Nothing (reads <code>sys.argv</code> implicitly)</li></ul></div>
+        <div class="io-box"><h4>Returns</h4><ul><li><code>argparse.Namespace</code> — an object where each argument is an attribute, e.g. <code>args.peak_count</code></li></ul></div>
+      </div>
+      <p><strong>Key points for reviewers:</strong></p>
+      <ul>
+        <li>The module docstring is passed as <code>description=__doc__</code> so <code>--help</code> shows it verbatim.</li>
+        <li><code>formatter_class=argparse.RawDescriptionHelpFormatter</code> preserves line breaks in the docstring when printing help — without it, argparse would collapse it to one line.</li>
+        <li><code>type=Path</code> on path arguments means argparse converts the string to a <code>Path</code> object automatically — no manual conversion needed later.</li>
+        <li><code>type=float</code> and <code>type=int</code> mean invalid input (e.g. passing <code>--peak-count abc</code>) gives a clean error message rather than crashing later with a confusing TypeError.</li>
+        <li>The default for <code>--threads</code> is <code>min(8, os.cpu_count() or 1)</code> — this is computed at parse time, so the default shown in <code>--help</code> is the actual CPU count of the machine, not a hardcoded number.</li>
+      </ul>
+      <div class="callout amber">
+        <span class="tag">Note on --min-dp</span>
+        <p>The default is 99, not 100. This matches the clinical pipeline filter expression <code>FORMAT/DP&lt;99</code>, which removes variants with DP strictly less than 99 — meaning DP=99 is <em>retained</em>. If you changed the default to 100, DP=99 variants would be lost. The docstring explains this carefully.</p>
+      </div>
+    </div>
+  </div>
+
+  <div id="run" class="fn-box">
+    <div class="fn-header">
+      <span class="fn-name">_run()</span>
+      <span class="fn-lines">Lines ~127–131</span>
+      <span class="fn-phase setup">Setup helper</span>
+    </div>
+    <div class="fn-body">
+      <p><strong>Purpose:</strong> a minimal wrapper around <code>subprocess.run()</code> that logs the command at DEBUG level before running it.</p>
+      <div class="io-grid">
+        <div class="io-box"><h4>Takes</h4><ul><li><code>cmd: List[str]</code> — the command to run</li><li><code>check: bool = True</code> — whether to raise on non-zero exit</li></ul></div>
+        <div class="io-box"><h4>Returns</h4><ul><li><code>subprocess.CompletedProcess</code></li></ul></div>
+      </div>
+      <p><strong>Why bother?</strong> With <code>--verbose</code>, every bcftools command is logged before it runs. This is invaluable for debugging — if a bcftools command fails, you can see exactly what was executed. Without this wrapper, you would have to add logging to every subprocess call individually.</p>
+    </div>
+  </div>
+
+  <div id="get-sample-name" class="fn-box">
+    <div class="fn-header">
+      <span class="fn-name">get_sample_name()</span>
+      <span class="fn-lines">Lines ~133–148</span>
+      <span class="fn-phase setup">Setup helper</span>
+    </div>
+    <div class="fn-body">
+      <p><strong>Purpose:</strong> extracts the sample name from a VCF file's header. In a VCF, the 10th column (0-indexed: column 9) of the <code>#CHROM</code> line is the sample name.</p>
+      <div class="io-grid">
+        <div class="io-box"><h4>Takes</h4><ul><li><code>vcf: Path</code> — path to a VCF file</li></ul></div>
+        <div class="io-box"><h4>Returns</h4><ul><li><code>str</code> — sample name, or the filename stem if the header cannot be read</li></ul></div>
+      </div>
+      <p>Runs <code>bcftools view -h</code> (print header only) and scans each line for the one starting with <code>#CHROM</code>. Splits that line on tabs and returns <code>parts[9]</code>. The fallback to <code>vcf.stem</code> ensures the function never raises — if the VCF is unreadable, the filename is used instead and a warning is logged.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<section id="csq-gnomad">
+  <h2><span class="sec-num">Phase 1</span> Phase 1 — Pre-filtering functions</h2>
+
+  <div class="fn-box">
+    <div class="fn-header">
+      <span class="fn-name">_csq_gnomad_fields()</span>
+      <span class="fn-lines">Lines ~156–166</span>
+      <span class="fn-phase p1">Phase 1</span>
+    </div>
+    <div class="fn-body">
+      <p><strong>Purpose:</strong> detects which gnomAD allele frequency fields are present in a VCF's VEP annotation, so <code>filter_vcf()</code> knows which fields to filter on.</p>
+      <div class="io-grid">
+        <div class="io-box"><h4>Takes</h4><ul><li><code>src: Path</code> — path to the input VCF</li></ul></div>
+        <div class="io-box"><h4>Returns</h4><ul><li><code>List[str]</code> — e.g. <code>["gnomADg_AF", "gnomADe_AF"]</code> or <code>["gnomADe_AF"]</code> or <code>[]</code></li></ul></div>
+      </div>
+      <p>Runs <code>bcftools +split-vep --list</code> on the VCF. This prints one line per CSQ subfield in the format <code>index&lt;TAB&gt;field_name</code>. The function extracts field names (column 2) and returns any that match <code>gnomADg_AF</code> or <code>gnomADe_AF</code>.</p>
+      <p><strong>Why is this needed?</strong> Two VEP configurations have been used across different runs. Older VCFs only have <code>gnomADe_AF</code>; newer ones have both <code>gnomADg_AF</code> and <code>gnomADe_AF</code>. The gnomAD filter step in <code>filter_vcf()</code> must only reference fields that actually exist in the VCF — otherwise bcftools would fail. This function makes the pipeline self-adapting.</p>
+    </div>
+  </div>
+
+  <div id="filter-vcf" class="fn-box">
+    <div class="fn-header">
+      <span class="fn-name">filter_vcf()</span>
+      <span class="fn-lines">Lines ~169–254</span>
+      <span class="fn-phase p1">Phase 1</span>
+    </div>
+    <div class="fn-body">
+      <p><strong>Purpose:</strong> runs a single VCF through the four-stage bcftools filtering pipeline and writes the filtered, indexed output file.</p>
+      <div class="io-grid">
+        <div class="io-box"><h4>Takes</h4><ul><li><code>src: Path</code> — input VCF</li><li><code>dst: Path</code> — output VCF path</li><li><code>pass_only: bool</code></li><li><code>min_dp: int</code></li><li><code>min_af: float</code></li><li><code>max_gnomad: float</code></li></ul></div>
+        <div class="io-box"><h4>Returns</h4><ul><li>Nothing — writes files to disk</li><li>Raises <code>RuntimeError</code> if any bcftools stage fails</li></ul></div>
+      </div>
+
+      <p><strong>The four pipeline stages:</strong></p>
+      <ol>
+        <li><strong>Stage 1 — <code>bcftools view -f PASS</code></strong> (optional): removes soft-filtered variants (those with anything other than PASS in the FILTER column). These are variants that Sentieon TNfilter deemed unreliable — strand bias, low quality, etc. Skipped if <code>--include-non-pass</code> is set.</li>
+        <li><strong>Stage 2 — <code>bcftools filter -e 'FORMAT/DP&lt;N || AF&lt;N'</code></strong>: removes low depth and low VAF variants. The <code>-e</code> flag means "exclude variants where this expression is true". Both conditions are combined with <code>||</code> so a variant is removed if <em>either</em> condition is met.</li>
+        <li><strong>Stage 3 — <code>bcftools +split-vep --columns - -a CSQ -p CSQ_ -s worst</code></strong>: extracts subfields from the VEP CSQ INFO field into individual INFO tags prefixed with <code>CSQ_</code>. The <code>-s worst</code> flag picks one transcript per variant (the worst-consequence transcript), preventing duplicate rows for multi-transcript variants. After this stage, gnomAD AFs are available as <code>CSQ_gnomADg_AF</code> and <code>CSQ_gnomADe_AF</code>. Crucially, these become properly-typed floating-point fields, enabling arithmetic comparison in Stage 4.</li>
+        <li><strong>Stage 4 — <code>bcftools view -e 'CSQ_gnomADg_AF&gt;=T || CSQ_gnomADe_AF&gt;=T'</code></strong>: removes variants with gnomAD AF above the threshold. Only adds this filter expression if gnomAD fields were found by <code>_csq_gnomad_fields()</code>. Output is bgzipped (<code>-Oz</code>) to <code>dst</code>.</li>
+      </ol>
+
+      <p>After all four stages succeed, <code>bcftools index -t</code> creates a tabix index for the filtered VCF — required for downstream tools.</p>
+
+      <div class="callout amber">
+        <span class="tag">Return code checking order matters</span>
+        <p>The code checks all four return codes <em>after</em> calling <code>p4.communicate()</code> — not before. This is intentional: you must let all processes run to completion before inspecting their exit codes. Checking p1's return code while p2–p4 are still running could cause a deadlock if p1's stderr buffer is full.</p>
+      </div>
+      <div class="callout blue">
+        <span class="tag">The filter cache</span>
+        <p>Before running the pipeline, <code>main()</code> checks whether a <code>.filter.json</code> sidecar file exists alongside the filtered VCF and whether its contents match the current filter settings. If they match, Phase 1 is skipped for that sample. This means re-running with identical settings is nearly instant. If you change any filter argument (e.g. raise <code>--min-dp</code>), the sidecar will not match and all VCFs are re-filtered automatically.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<section id="load-vcf">
+  <h2><span class="sec-num">Phase 2</span> Phase 2 — Loading</h2>
+
+  <div class="fn-box">
+    <div class="fn-header">
+      <span class="fn-name">load_vcf()</span>
+      <span class="fn-lines">Lines ~258–315</span>
+      <span class="fn-phase p2">Phase 2</span>
+    </div>
+    <div class="fn-body">
+      <p><strong>Purpose:</strong> queries a filtered VCF with <code>bcftools query</code> and constructs a pandas DataFrame of variants. After this function, the code never reads a VCF file directly again.</p>
+      <div class="io-grid">
+        <div class="io-box"><h4>Takes</h4><ul><li><code>vcf: Path</code> — filtered VCF (output of Phase 1)</li></ul></div>
+        <div class="io-box"><h4>Returns</h4><ul><li><code>pd.DataFrame</code> — columns: chrom, pos, ref, alt, filter_col, af, gene</li></ul></div>
+      </div>
+
+      <p><strong>The bcftools query format string:</strong></p>
+      <div class="cb"><pre><span class="s">"%CHROM\t%POS\t%REF\t%ALT\t%FILTER\t[%AF]\t%INFO/CSQ_SYMBOL\n"</span></pre></div>
+      <p>Each <code>%</code>-prefixed token is replaced by the corresponding VCF field. <code>[%AF]</code> in square brackets extracts the sample-level FORMAT/AF field (the allele fraction measured from the reads). <code>%INFO/CSQ_SYMBOL</code> fetches the gene name that was extracted into an INFO field by <code>+split-vep</code> in Phase 1. The output is tab-separated plain text, one line per variant.</p>
+
+      <p><strong>The deduplication step:</strong></p>
+      <div class="cb"><pre>df = df.drop_duplicates(subset=[<span class="s">"chrom"</span>, <span class="s">"pos"</span>, <span class="s">"ref"</span>, <span class="s">"alt"</span>], keep=<span class="s">"first"</span>)</pre></div>
+      <p>Even with <code>-s worst</code> in the split-vep stage, some VCFs can emit multiple rows for the same variant with different gene annotations. Deduplication ensures each variant position appears only once. The <code>keep="first"</code> policy is safe — the AF value is the same regardless of which transcript annotation is kept.</p>
+
+      <p><strong>Error handling:</strong> if <code>CSQ_SYMBOL</code> is not found (e.g. running on a VCF that has not been through Phase 1 filtering), the function logs a specific hint to re-run with <code>--force-refilter</code> and raises a <code>RuntimeError</code> rather than silently producing wrong results.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<section id="find-peaks">
+  <h2><span class="sec-num">Phase 3</span> Phase 3 — Core algorithm</h2>
+
+  <div class="fn-box">
+    <div class="fn-header">
+      <span class="fn-name">_find_peaks()</span>
+      <span class="fn-lines">Lines ~319–370</span>
+      <span class="fn-phase p3">Phase 3</span>
+    </div>
+    <div class="fn-body">
+      <p><strong>Purpose:</strong> given an array of log2-ratio values, builds a histogram and identifies two peaks: the tallest bin overall (usually the germline-sharing peak near ratio=1), and the tallest bin in the non-unity region (the contamination signal).</p>
+      <div class="io-grid">
+        <div class="io-box"><h4>Takes</h4><ul><li><code>log2_ratios: np.ndarray</code> — array of log2(VAF_B/VAF_A) values</li><li><code>bin_width: float</code> — histogram bin width</li></ul></div>
+        <div class="io-box"><h4>Returns</h4><ul><li><code>dict</code> with keys: <code>overall_log2</code>, <code>overall_count</code>, <code>overall_fraction</code>, <code>nonunity_log2</code>, <code>nonunity_count</code>, <code>nonunity_fraction</code></li></ul></div>
+      </div>
+
+      <p><strong>The overall peak</strong> is simply <code>np.argmax(counts)</code> — whichever bin has the most variants. For any run with shared common germline variants, this is almost always near log2=0 (ratio=1). It is reported but not used for flagging.</p>
+
+      <p><strong>The non-unity peak</strong> is the key. The code masks out the unity zone (bins where <code>|center| &lt;= 0.3</code>) and then finds <code>np.argmax()</code> on the remaining bins only:</p>
+      <div class="cb"><pre>nonunity_mask = np.abs(centers) > <span class="n">0.3</span>
+nonunity_counts = counts.copy()
+nonunity_counts[~nonunity_mask] = <span class="n">0</span>   <span class="c"># zero out the unity zone</span>
+
+<span class="k">if</span> nonunity_counts.max() > <span class="n">0</span>:
+    idx = np.argmax(nonunity_counts)    <span class="c"># tallest non-unity bin</span>
+    result[<span class="s">"nonunity_log2"</span>]   = float(centers[idx])
+    result[<span class="s">"nonunity_count"</span>]  = int(counts[idx])   <span class="c"># note: uses original counts</span>
+    result[<span class="s">"nonunity_fraction"</span>] = float(counts[idx]) / n_total</pre></div>
+      <div class="callout blue">
+        <span class="tag">counts[idx] not nonunity_counts[idx]</span>
+        <p>The count is read from <code>counts[idx]</code> (the original, unmasked array), not <code>nonunity_counts[idx]</code>. This is correct — the mask only affects which bin is chosen as the maximum, not how many variants are in it. Both values would be identical here (the unity zone is set to 0, not negative), but using the original array is clearer intent.</p>
+      </div>
+    </div>
+  </div>
+
+  <div id="compare" class="fn-box">
+    <div class="fn-header">
+      <span class="fn-name">_compare()</span>
+      <span class="fn-lines">Lines ~373–465</span>
+      <span class="fn-phase p3">Phase 3 — core algorithm</span>
+    </div>
+    <div class="fn-body">
+      <p><strong>Purpose:</strong> the central function of the entire tool. Merges two samples' variant DataFrames, computes log2 ratios, calls <code>_find_peaks()</code>, assigns directionality, and returns a results dict plus optionally the merged DataFrame.</p>
+      <div class="io-grid">
+        <div class="io-box"><h4>Takes</h4><ul><li><code>name_a, name_b: str</code> — sample names</li><li><code>df_a, df_b: pd.DataFrame</code> — variant DataFrames</li><li><code>bin_width: float</code></li><li><code>include_shared_df: bool</code> — whether to return the merged DataFrame</li></ul></div>
+        <div class="io-box"><h4>Returns</h4><ul><li><code>Tuple[dict, Optional[pd.DataFrame]]</code> — results dict + merged DataFrame (if requested)</li></ul></div>
+      </div>
+
+      <p><strong>Step 1 — merge on shared variant positions.</strong> Only variants present in both samples are kept (inner join on chrom, pos, ref, alt). <code>n_shared</code> is the count of these. If fewer than 2 shared variants are found, the function returns early with default NaN values — there is nothing useful to compute.</p>
+
+      <p><strong>Step 2 — remove AF=0 variants.</strong> Any variant where either sample has AF=0 would produce a division by zero or infinite log2 ratio. These are filtered out with a warning logged at DEBUG level.</p>
+
+      <p><strong>Step 3 — compute ratios and call _find_peaks().</strong></p>
+      <div class="cb"><pre>ratios              = merged[<span class="s">"af_b"</span>] / merged[<span class="s">"af_a"</span>]
+merged[<span class="s">"log2_ratio"</span>] = np.log2(ratios.values)
+peaks = _find_peaks(merged[<span class="s">"log2_ratio"</span>].values, bin_width)</pre></div>
+
+      <p><strong>Step 4 — assign directionality from the non-unity peak.</strong></p>
+      <div class="cb"><pre>plr = peaks[<span class="s">"nonunity_log2"</span>]   <span class="c"># the peak log2 ratio</span>
+
+<span class="k">if</span> plr < <span class="n">0</span>:      <span class="c"># VAF_B &lt; VAF_A → A is source</span>
+    result[<span class="s">"contamination_source"</span>]    = name_a
+    result[<span class="s">"contamination_recipient"</span>] = name_b
+    result[<span class="s">"contamination_fraction"</span>]  = <span class="n">2.0</span> ** plr
+<span class="k">else</span>:            <span class="c"># VAF_B &gt; VAF_A → B is source</span>
+    result[<span class="s">"contamination_source"</span>]    = name_b
+    result[<span class="s">"contamination_recipient"</span>] = name_a
+    result[<span class="s">"contamination_fraction"</span>]  = <span class="n">2.0</span> ** (-plr)</pre></div>
+
+      <p>The contamination fraction estimate is <code>2^plr</code> (for negative plr) or <code>2^(-plr)</code> (for positive plr) — always a value between 0 and 1 representing the fraction of the recipient's library that came from the source.</p>
+
+      <p><strong>Step 5 — mark in-peak variants.</strong> Variants in the non-unity peak bin (within half a bin-width of the peak centre) are flagged with <code>in_peak=True</code> in the merged DataFrame. These appear in the detail TSV output and are highlighted in the histogram plots.</p>
+
+      <figure>
+      <div class="fig-wrap">
+      <svg viewBox="0 0 820 370" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="_compare() logic flowchart showing the five stages">
+        <style>.cb2{font:bold 12px -apple-system,sans-serif}.cs{font:11px -apple-system,sans-serif}.cl{font:10px -apple-system,sans-serif;letter-spacing:1}</style>
+        <defs><marker id="ca" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto"><path d="M0,0 L7,2.5 L0,5" fill="#005eb8"/></marker><marker id="cn" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto"><path d="M0,0 L7,2.5 L0,5" fill="#9b2335"/></marker></defs>
+        <text x="20" y="15" class="cl" fill="#6b7c8d">_COMPARE() LOGIC FLOW</text>
+        <!-- Step 1: Merge -->
+        <rect x="260" y="25" width="300" height="44" rx="6" fill="#e3edf8" stroke="#005eb8" stroke-width="1.5"/>
+        <text x="410" y="45" text-anchor="middle" class="cb2" fill="#003d78">1. pd.merge() on (chrom, pos, ref, alt)</text>
+        <text x="410" y="62" text-anchor="middle" class="cs" fill="#6b7c8d">inner join — shared variants only</text>
+        <line x1="410" y1="69" x2="410" y2="98" stroke="#005eb8" stroke-width="1.5" marker-end="url(#ca)"/>
+        <!-- Step 2: n_shared check -->
+        <polygon points="410,98 530,122 410,146 290,122" fill="#fdf0e0" stroke="#b35c00" stroke-width="1.5"/>
+        <text x="410" y="118" text-anchor="middle" class="cb2" fill="#b35c00">n_shared &lt; 2?</text>
+        <text x="410" y="134" text-anchor="middle" class="cs" fill="#6b7c8d">or AF=0 in either sample?</text>
+        <!-- Yes branch (early return) -->
+        <line x1="530" y1="122" x2="640" y2="122" stroke="#9b2335" stroke-width="1.5" marker-end="url(#cn)"/>
+        <text x="585" y="115" text-anchor="middle" class="cs" fill="#9b2335">Yes</text>
+        <rect x="640" y="104" width="160" height="36" rx="6" fill="#fce8ea" stroke="#9b2335" stroke-width="1.5"/>
+        <text x="720" y="127" text-anchor="middle" class="cb2" fill="#9b2335">return (NaN dict, None)</text>
+        <!-- No branch -->
+        <line x1="410" y1="146" x2="410" y2="170" stroke="#005eb8" stroke-width="1.5" marker-end="url(#ca)"/>
+        <text x="425" y="162" class="cs" fill="#005eb8">No</text>
+        <!-- Step 3: Compute ratios -->
+        <rect x="260" y="170" width="300" height="44" rx="6" fill="#e3edf8" stroke="#005eb8" stroke-width="1.5"/>
+        <text x="410" y="190" text-anchor="middle" class="cb2" fill="#003d78">2. Compute log2(VAF_B / VAF_A)</text>
+        <text x="410" y="207" text-anchor="middle" class="cs" fill="#6b7c8d">one value per shared variant</text>
+        <line x1="410" y1="214" x2="410" y2="238" stroke="#005eb8" stroke-width="1.5" marker-end="url(#ca)"/>
+        <!-- Step 4: Find peaks -->
+        <rect x="260" y="238" width="300" height="44" rx="6" fill="#ede8f8" stroke="#4b2d8e" stroke-width="1.5"/>
+        <text x="410" y="258" text-anchor="middle" class="cb2" fill="#4b2d8e">3. _find_peaks(log2_ratios)</text>
+        <text x="410" y="275" text-anchor="middle" class="cs" fill="#6b7c8d">overall peak + non-unity peak</text>
+        <line x1="410" y1="282" x2="410" y2="306" stroke="#005eb8" stroke-width="1.5" marker-end="url(#ca)"/>
+        <!-- Step 5: Direction -->
+        <polygon points="410,306 530,326 410,346 290,326" fill="#fdf0e0" stroke="#b35c00" stroke-width="1.5"/>
+        <text x="410" y="330" text-anchor="middle" class="cb2" fill="#b35c00">peak log2 &lt; 0?</text>
+        <!-- Left: A is source -->
+        <line x1="290" y1="326" x2="190" y2="326" stroke="#005eb8" stroke-width="1.5" marker-end="url(#ca)"/>
+        <text x="240" y="318" text-anchor="middle" class="cs" fill="#005eb8">Yes</text>
+        <rect x="50" y="308" width="140" height="36" rx="6" fill="#e3edf8" stroke="#005eb8" stroke-width="1.5"/>
+        <text x="120" y="331" text-anchor="middle" class="cb2" fill="#003d78">A is source</text>
+        <!-- Right: B is source -->
+        <line x1="530" y1="326" x2="630" y2="326" stroke="#9b2335" stroke-width="1.5" marker-end="url(#cn)"/>
+        <text x="580" y="318" text-anchor="middle" class="cs" fill="#9b2335">No</text>
+        <rect x="630" y="308" width="140" height="36" rx="6" fill="#fce8ea" stroke="#9b2335" stroke-width="1.5"/>
+        <text x="700" y="331" text-anchor="middle" class="cb2" fill="#9b2335">B is source</text>
+      </svg>
+      </div>
+      <figcaption>Figure F &#183; _compare() logic flow. The diamond shapes are decision points that can trigger an early return. The key insight is that the function first finds the non-unity peak, then reads its sign to determine direction.</figcaption>
+      </figure>
+
+      <p><strong>The <code>include_shared_df</code> flag:</strong> in Phase 3, all pairs are compared with <code>include_shared_df=False</code> — the merged DataFrame is computed but then discarded, saving memory. Only flagged pairs are re-compared in Phase 4 with <code>include_shared_df=True</code> to retrieve the variant-level detail needed for TSVs and plots. See Document 1 for the full explanation of why this two-pass approach is used.</p>
+    </div>
+  </div>
+
+  <div id="worker" class="fn-box">
+    <div class="fn-header">
+      <span class="fn-name">_worker()</span>
+      <span class="fn-lines">Lines ~468–472</span>
+      <span class="fn-phase p3">Phase 3</span>
+    </div>
+    <div class="fn-body">
+      <p><strong>Purpose:</strong> a thin unpacking wrapper around <code>_compare()</code>. <code>ThreadPoolExecutor.map()</code> calls functions with a single argument; this function receives a tuple and unpacks it before calling <code>_compare()</code>.</p>
+      <div class="cb"><pre><span class="k">def</span> <span class="f">_worker</span>(args_tuple: tuple) -&gt; dict:
+    name_a, name_b, df_cache, bin_width = args_tuple
+    result, _ = _compare(name_a, df_cache[name_a], name_b, df_cache[name_b],
+                         bin_width, include_shared_df=<span class="k">False</span>)
+    <span class="k">return</span> result</pre></div>
+      <p>The <code>_</code> variable discards the shared DataFrame — in Phase 3 we only want the results dict. This is a Python convention for "I know there's a second return value but I don't need it".</p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<section id="load-freemix">
+  <h2><span class="sec-num">Phase 4</span> Phase 4 — Flagging and output functions</h2>
+
+  <div class="fn-box">
+    <div class="fn-header">
+      <span class="fn-name">_load_freemix()</span>
+      <span class="fn-lines">Lines ~477–494</span>
+      <span class="fn-phase p4">Phase 4</span>
+    </div>
+    <div class="fn-body">
+      <p><strong>Purpose:</strong> reads a MultiQC VerifyBamID output file and returns a dict mapping sample name to FREEMIX fraction.</p>
+      <div class="io-grid">
+        <div class="io-box"><h4>Takes</h4><ul><li><code>freemix_file: Path</code> — path to <code>multiqc_verifybamid.txt</code></li></ul></div>
+        <div class="io-box"><h4>Returns</h4><ul><li><code>dict</code> — sample name → FREEMIX fraction (0.0–1.0)</li></ul></div>
+      </div>
+      <p>The function validates that the required columns <code>Sample</code> and <code>FREEMIX</code> are present, deduplicates on sample name (in case a sample appears multiple times), and returns the dict. A <code>ValueError</code> is raised if the columns are missing — the error message includes the actual columns found, which helps diagnose format changes.</p>
+    </div>
+  </div>
+
+  <div id="apply-flags" class="fn-box">
+    <div class="fn-header">
+      <span class="fn-name">_apply_flags()</span>
+      <span class="fn-lines">Lines ~497–539</span>
+      <span class="fn-phase p4">Phase 4</span>
+    </div>
+    <div class="fn-body">
+      <p><strong>Purpose:</strong> converts the list of raw result dicts to a DataFrame, computes within-run z-scores, and applies all flagging conditions. The <code>flagged</code> column this adds is the primary clinical output.</p>
+      <div class="io-grid">
+        <div class="io-box"><h4>Takes</h4><ul><li><code>results: List[dict]</code></li><li><code>min_shared, peak_count_thresh, n_shared_z_thresh</code></li><li><code>freemix: Optional[dict]</code></li><li><code>freemix_threshold: float</code></li></ul></div>
+        <div class="io-box"><h4>Returns</h4><ul><li><code>pd.DataFrame</code> — all pairs with added <code>n_shared_z</code> and <code>flagged</code> columns</li></ul></div>
+      </div>
+
+      <p><strong>Z-score computation:</strong></p>
+      <div class="cb"><pre>n_mean = df[<span class="s">"n_shared"</span>].mean()
+n_std  = df[<span class="s">"n_shared"</span>].std()
+df[<span class="s">"n_shared_z"</span>] = (df[<span class="s">"n_shared"</span>] - n_mean) / n_std <span class="k">if</span> n_std > <span class="n">0</span> <span class="k">else</span> <span class="n">0.0</span></pre></div>
+
+      <p><strong>The base flag (three conditions, all must be true):</strong></p>
+      <div class="cb"><pre>base_flag = (
+    (df[<span class="s">"n_shared"</span>]   >= min_shared)          <span class="c"># enough variants to assess</span>
+  &amp; (df[<span class="s">"peak_count"</span>] >= peak_count_thresh)   <span class="c"># clear non-unity peak</span>
+  &amp; (df[<span class="s">"n_shared_z"</span>] >= n_shared_z_thresh)   <span class="c"># unusually high sharing</span>
+)</pre></div>
+      <p>Note: <code>&amp;</code> not <code>and</code>. In pandas, <code>&amp;</code> is element-wise boolean AND across a Series. Python's <code>and</code> keyword does not work on Series.</p>
+
+      <p><strong>FREEMIX gating:</strong> when a FREEMIX dict is provided, a pair is only flagged if the <em>recipient</em>'s FREEMIX also meets the threshold. <code>fillna(False)</code> ensures pairs with no FREEMIX data are not flagged.</p>
+      <div class="cb"><pre>df[<span class="s">"recipient_freemix"</span>] = df[<span class="s">"contamination_recipient"</span>].map(freemix)
+freemix_flag = df[<span class="s">"recipient_freemix"</span>] >= freemix_threshold
+df[<span class="s">"flagged"</span>] = base_flag &amp; freemix_flag.fillna(<span class="k">False</span>)</pre></div>
+      <p>The <code>.map(freemix)</code> call is a vectorised dictionary lookup — for each recipient name in the column, it looks up the corresponding FREEMIX value from the dict. Names not in the dict become NaN.</p>
+    </div>
+  </div>
+
+  <div id="write-fns" class="fn-box">
+    <div class="fn-header">
+      <span class="fn-name">write_summary() · write_matrix() · write_flagged_details() · write_plots()</span>
+      <span class="fn-lines">Lines ~542–714</span>
+      <span class="fn-phase p4">Phase 4</span>
+    </div>
+    <div class="fn-body">
+      <p>These four functions write the tool's output files. They are mostly straightforward and do not require deep study.</p>
+
+      <table>
+        <thead><tr><th>Function</th><th>Output</th><th>Key logic</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code>write_summary()</code></td>
+            <td><code>summary.tsv</code></td>
+            <td>One line: <code>df.to_csv(out, sep="\t", index=False, na_rep="NA")</code>. The <code>na_rep="NA"</code> writes the string "NA" for NaN cells rather than an empty field.</td>
+          </tr>
+          <tr>
+            <td><code>_get_plate_order()</code></td>
+            <td>Ordered list of sample names</td>
+            <td>Reads well row/column from MultiQC, sorts by (column, row) for column-major plate order (A1, B1…H1, A2…). Samples not in the plate file are appended at the end. Filters out per-lane FASTQ rows using a regex.</td>
+          </tr>
+          <tr>
+            <td><code>write_matrix()</code></td>
+            <td><code>matrix.tsv</code></td>
+            <td>Builds an N×N numpy zeros matrix. For each flagged pair, sets <code>matrix[recipient_idx, source_idx] = peak_count</code>. Rows are recipients, columns are sources. The order comes from <code>_get_plate_order()</code> when a plate layout is provided.</td>
+          </tr>
+          <tr>
+            <td><code>write_flagged_details()</code></td>
+            <td><code>flagged_pairs/*.tsv</code></td>
+            <td>Retrieves the shared variant DataFrame for each flagged pair from <code>shared_cache</code> and writes it as a TSV. Sanitises sample names for use as filenames using <code>re.sub()</code>. Truncates to 50 characters to avoid filesystem limits.</td>
+          </tr>
+          <tr>
+            <td><code>write_plots()</code></td>
+            <td><code>plots/*.png</code></td>
+            <td>Imports matplotlib at function call time (not at module level). Draws a histogram of log2 ratios with reference lines at common ratio values (±1, ±2). Marks the contamination peak and germline peak with vertical dashed lines. Only called when <code>--plots</code> is passed.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<section id="main">
+  <h2><span class="sec-num">Orchestration</span> main()</h2>
+
+  <div class="fn-box">
+    <div class="fn-header">
+      <span class="fn-name">main()</span>
+      <span class="fn-lines">Lines ~718–1009</span>
+      <span class="fn-phase setup">Entry point</span>
+    </div>
+    <div class="fn-body">
+      <p><strong>Purpose:</strong> the entry point for the entire script. Calls <code>parse_args()</code>, configures logging, then runs the four phases in sequence.</p>
+
+      <h4>Phase 1 loop — the cache check</h4>
+      <p>For each VCF in the input directory, <code>main()</code> checks whether a valid cached filtered VCF already exists:</p>
+      <div class="cb"><pre><span class="c"># Build what the filter config should look like</span>
+current_cfg = {
+    <span class="s">"pass_only"</span>:  <span class="k">not</span> args.include_non_pass,
+    <span class="s">"min_dp"</span>:     args.min_dp,
+    <span class="s">"min_af"</span>:     args.min_af,
+    <span class="s">"max_gnomad"</span>: args.max_gnomad,
+}
+
+<span class="k">def</span> <span class="f">_cfg_matches</span>() -&gt; bool:
+    <span class="c"># Read the .filter.json sidecar file and compare</span>
+    <span class="k">if not</span> cfg.exists(): <span class="k">return False</span>
+    <span class="k">import</span> json <span class="k">as</span> _json
+    <span class="k">try</span>:
+        <span class="k">return</span> _json.loads(cfg.read_text()) == current_cfg
+    <span class="k">except</span> Exception: <span class="k">return False</span>
+
+<span class="k">if not</span> args.force_refilter <span class="k">and</span> dst.exists() <span class="k">and</span> tbi.exists() <span class="k">and</span> _cfg_matches():
+    logging.info(<span class="s">"  Reusing: %s"</span>, dst.name)
+<span class="k">else</span>:
+    filter_vcf(vcf, dst, ...)</pre></div>
+      <p>The <code>_cfg_matches()</code> function is defined <em>inside the loop</em> as a closure. It captures <code>cfg</code> and <code>current_cfg</code> from the enclosing scope. This pattern avoids passing these values as parameters and keeps the cache logic self-contained.</p>
+
+      <h4>Phase 3 — thread pool setup</h4>
+      <div class="cb"><pre>tasks = [
+    (na, nb, df_cache, args.bin_width)
+    <span class="k">for</span> na, nb <span class="k">in</span> combinations(sample_names, 2)
+]
+
+<span class="k">if</span> args.threads > <span class="n">1</span>:
+    <span class="k">with</span> ThreadPoolExecutor(max_workers=args.threads) <span class="k">as</span> executor:
+        raw_results = list(executor.map(_worker, tasks))
+<span class="k">else</span>:
+    raw_results = [_worker(t) <span class="k">for</span> t <span class="k">in</span> tasks]</pre></div>
+      <p>When <code>--threads 1</code> is passed, the thread pool is bypassed entirely and comparisons run in a simple list comprehension. This makes debugging easier — exceptions are raised directly in the main thread with a clean traceback, rather than being wrapped by the executor.</p>
+
+      <h4>Phase 4 — the second _compare() pass for detail output</h4>
+      <div class="cb"><pre>shared_cache: Dict[tuple, pd.DataFrame] = {}
+<span class="k">for</span> r <span class="k">in</span> output_pairs:
+    na, nb = r[<span class="s">"sample_a"</span>], r[<span class="s">"sample_b"</span>]
+    _, shared = _compare(na, df_cache[na], nb, df_cache[nb],
+                         args.bin_width, include_shared_df=<span class="k">True</span>)  <span class="c"># ← second call</span>
+    shared_cache[(na, nb)] = shared</pre></div>
+      <p>Only the top <code>--max-output</code> flagged pairs (default 10, sorted by peak_count descending) get this second pass. For a 30-sample run with 5 flagged pairs, this is 5 extra comparisons — negligible. It avoids holding all pairwise DataFrames in RAM for the entire Phase 3 run.</p>
+
+      <h4>The if __name__ == "__main__" guard</h4>
+      <div class="cb"><pre><span class="k">if</span> __name__ == <span class="s">"__main__"</span>:
+    main()</pre></div>
+      <p>This is a Python idiom meaning: "run <code>main()</code> only if this file is executed directly, not if it is imported as a module". Without it, <code>main()</code> would be called immediately if you did <code>import contamination_screen</code> from another script — which would be very unexpected. This guard also allows the functions to be imported and tested individually in unit tests without triggering the full pipeline.</p>
+    </div>
+  </div>
+</section>
+
+<section id="next">
+  <h2><span class="sec-num">Next</span> Continue to part 5</h2>
+  <p>Part 5 provides dense line-by-line annotations for the four hardest functions: <code>filter_vcf()</code>, <code>_find_peaks()</code>, <code>_compare()</code>, and <code>_apply_flags()</code>. Keep it open alongside the code when reading those sections.</p>
+  <div class="series-nav">
+    <a href="Contamination_Screen_Code_Explainer_3.html">&#8592; 3 · Key concepts</a>
+    <a href="Contamination_Screen_Code_Explainer_4.html" class="current">4 · Function walkthrough</a>
+    <a href="Contamination_Screen_Code_Explainer_5.html">5 · Line-by-line reference &#8594;</a>
+  </div>
+</section>
+
+</main>
+</div>
+
+<footer>
+  Contamination Screen Code Explainer — Part 4 of 5 · Joo Wook Ahn, 10 May 2026.
+</footer>
+</body>
+</html>
