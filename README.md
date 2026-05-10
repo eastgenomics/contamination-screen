@@ -2,6 +2,28 @@
 
 Pairwise cross-sample contamination detector for tumour sequencing panel VCFs.
 
+## Documentation
+
+Suppplementary HTML documents are available both in this repository and hosted online.
+
+### Algorithm and code review
+
+| Document | In repo | Online |
+|---|---|---|
+| **Algorithm briefing** — visual guide to the contamination signal, filtering, dual-peak detection, flagging thresholds, false positives, and validation | [Contamination_Screen_Code_Review_Briefing.html](Contamination_Screen_Code_Review_Briefing.html) | [view online](https://003-260510-docs-for-sharing.s3.eu-west-2.amazonaws.com/Contamination_Screen_Code_Review_Briefing.html) |
+
+### Code explainer series (for junior bioinformaticians)
+
+| Part | Topic | In repo | Online |
+|---|---|---|---|
+| 1 | High-level outline — 4 phases, data flow, function inventory | [Explainer 1](Contamination_Screen_Code_Explainer_1.html) | [view online](https://003-260510-docs-for-sharing.s3.eu-west-2.amazonaws.com/Contamination_Screen_Code_Explainer_1.html) |
+| 2 | Module structure — imports, constants, naming conventions | [Explainer 2](Contamination_Screen_Code_Explainer_2.html) | [view online](https://003-260510-docs-for-sharing.s3.eu-west-2.amazonaws.com/Contamination_Screen_Code_Explainer_2.html) |
+| 3 | Key concepts — log2 ratios, histograms, z-scores, subprocess pipes, threading | [Explainer 3](Contamination_Screen_Code_Explainer_3.html) | [view online](https://003-260510-docs-for-sharing.s3.eu-west-2.amazonaws.com/Contamination_Screen_Code_Explainer_3.html) |
+| 4 | Function walkthrough — all 17 functions with purpose and logic | [Explainer 4](Contamination_Screen_Code_Explainer_4.html) | [view online](https://003-260510-docs-for-sharing.s3.eu-west-2.amazonaws.com/Contamination_Screen_Code_Explainer_4.html) |
+| 5 | Line-by-line reference — dense annotations for the 4 hardest functions | [Explainer 5](Contamination_Screen_Code_Explainer_5.html) | [view online](https://003-260510-docs-for-sharing.s3.eu-west-2.amazonaws.com/Contamination_Screen_Code_Explainer_5.html) |
+
+---
+
 ## Overview
 
 This tool screens a cohort of annotated tumour VCF files for cross-sample
