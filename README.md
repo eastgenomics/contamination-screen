@@ -419,6 +419,13 @@ Downloads into `<output>/` (default: `./<project_name>/`):
 Control samples (specimen IDs containing `Q`, e.g. `26Q98K0076`) are excluded
 by default. Pass `--no-exclude-controls` to override.
 
+If `dx_grab` is not at `~/Documents/dx_grab`, set the `DXGRAB_DIR` environment
+variable to its location before running:
+
+```bash
+export DXGRAB_DIR=/path/to/dx_grab
+```
+
 ```bash
 # List what would be downloaded (no download)
 python dx_fetch.py '002_260423*MYE' --dry-run
