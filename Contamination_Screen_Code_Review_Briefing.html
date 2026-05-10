@@ -158,6 +158,7 @@
     <li><a href="#false-positives">Known False Positives</a></li>
     <li><a href="#freemix">FREEMIX Correlation</a></li>
     <li><a href="#validation">Validation Results</a></li>
+    <li><a href="#retro-data">Retrospective Evidence</a></li>
   </ul>
 
   <div class="toc-section">Reference</div>
@@ -1026,8 +1027,53 @@
 </section>
 
 <!-- ══════════════════════════════════════════════════════════ -->
+
+
+<!-- RETROSPECTIVE EVIDENCE -->
+<section id="retro-data">
+  <h2><span class="sec-num">09</span> Retrospective Evidence</h2>
+
+  <p>The three interactive charts below are the actual data behind the threshold and design decisions. Drawn from the 100-run retrospective cohort (97,310 pairwise comparisons, ~4,400 samples). Hover to see sample details, zoom, and toggle legend traces.</p>
+
+  <div class="callout blue">
+    <span class="tag">Viewing these charts</span>
+    <p>Charts are loaded from S3 and display fully with an internet connection. When viewing offline from the local repo, replace the <code>src</code> URL with the relative <code>retrospective/</code> path. Direct S3 links are provided under each chart.</p>
+  </div>
+
+  <h3>Chart 1 — Threshold exploration</h3>
+  <p>A 4-panel dashboard: peak_count vs n_shared_z coloured by FREEMIX; FREEMIX distributions by threshold bin. 2,953 samples, 70 runs (gnomADg+gnomADe config). <strong>What to look for:</strong> the clean separation in FREEMIX between the flagged quadrant (top-right) and the rest; bimodal FREEMIX distributions at the threshold cuts show the thresholds land in a genuine gap.</p>
+
+  <figure>
+  <div class="fig-wrap" style="padding:0;overflow:hidden;background:#f7f9fb">
+    <iframe src="https://003-260510-docs-for-sharing.s3.eu-west-2.amazonaws.com/threshold_exploration.html" width="100%" height="720" frameborder="0" scrolling="no" style="display:block" title="Threshold exploration dashboard"><p style="padding:20px;color:#6b7c8d">Chart not available. <a href="https://003-260510-docs-for-sharing.s3.eu-west-2.amazonaws.com/threshold_exploration.html">Open directly</a>.</p></iframe>
+  </div>
+  <figcaption>Figure 12 · Threshold exploration dashboard. 2,953 samples, 70 runs (RUN001–070). peak_count vs n_shared_z coloured by FREEMIX, with FREEMIX box plots by threshold bin. <a href="https://003-260510-docs-for-sharing.s3.eu-west-2.amazonaws.com/threshold_exploration.html">Open full interactive version</a>.</figcaption>
+  </figure>
+
+  <h3>Chart 2 — FREEMIX vs contamination screen scores (100 runs)</h3>
+  <p>FREEMIX % vs max peak_count (left) and max n_shared_z within-run (right) for 4,360 samples, coloured by role. <strong>What to look for:</strong> sources cluster near FREEMIX ~0% despite high signal; the two-population n_shared_z structure (two VEP config generations); all FREEMIX &gt;15% recipients captured above peak_count threshold.</p>
+
+  <figure>
+  <div class="fig-wrap" style="padding:0;overflow:hidden;background:#f7f9fb">
+    <iframe src="https://003-260510-docs-for-sharing.s3.eu-west-2.amazonaws.com/freemix_vs_contamination_100runs.html" width="100%" height="680" frameborder="0" scrolling="no" style="display:block" title="FREEMIX vs contamination screen scores 100 runs"><p style="padding:20px;color:#6b7c8d">Chart not available. <a href="https://003-260510-docs-for-sharing.s3.eu-west-2.amazonaws.com/freemix_vs_contamination_100runs.html">Open directly</a>.</p></iframe>
+  </div>
+  <figcaption>Figure 13 · FREEMIX vs contamination screen scores — 100 runs, 4,360 samples. Sources have near-normal FREEMIX (&lt;1%). Threshold lines at peak_count=10 and n_shared_z=2.0 shown. <a href="https://003-260510-docs-for-sharing.s3.eu-west-2.amazonaws.com/freemix_vs_contamination_100runs.html">Open full interactive version</a>.</figcaption>
+  </figure>
+
+  <h3>Chart 3 — Within-run vs global z-score normalisation</h3>
+  <p>Side-by-side: n_shared_z within-run (left) vs global (right) for 1,432 samples, 34 runs. <strong>What to look for:</strong> global normalisation inflates z-scores for older VEP config samples and suppresses newer ones — a systematic bias. Within-run normalisation correctly separates contaminated from clean for both configs.</p>
+
+  <figure>
+  <div class="fig-wrap" style="padding:0;overflow:hidden;background:#f7f9fb">
+    <iframe src="https://003-260510-docs-for-sharing.s3.eu-west-2.amazonaws.com/freemix_vs_nshared_z_comparison.html" width="100%" height="680" frameborder="0" scrolling="no" style="display:block" title="Within-run vs global z-score normalisation"><p style="padding:20px;color:#6b7c8d">Chart not available. <a href="https://003-260510-docs-for-sharing.s3.eu-west-2.amazonaws.com/freemix_vs_nshared_z_comparison.html">Open directly</a>.</p></iframe>
+  </div>
+  <figcaption>Figure 14 · Within-run vs global n_shared z-score normalisation. Within-run (left) works correctly across both VEP config generations; global (right) is biased by the config boundary. <a href="https://003-260510-docs-for-sharing.s3.eu-west-2.amazonaws.com/freemix_vs_nshared_z_comparison.html">Open full interactive version</a>.</figcaption>
+  </figure>
+
+</section>
+
 <section id="interpretation">
-  <h2><span class="sec-num">09</span> Interpretation Guide</h2>
+  <h2><span class="sec-num">10</span> Interpretation Guide</h2>
 
   <p>When reviewing output, use this decision framework:</p>
 
@@ -1082,7 +1128,7 @@
 
 <!-- ══════════════════════════════════════════════════════════ -->
 <section id="outputs">
-  <h2><span class="sec-num">10</span> Output Files</h2>
+  <h2><span class="sec-num">11</span> Output Files</h2>
 
   <figure>
   <div class="fig-wrap">
