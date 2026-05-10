@@ -135,6 +135,28 @@ python3 -m venv .venv
 
 ## Fetching data from DNAnexus
 
+### dx_grab (dependency)
+
+[dx_grab](https://github.com/eastgenomics/dx-grab) is a shared DNAnexus utility
+library that `dx_fetch.py` depends on for all platform interactions — authentication,
+project resolution, file discovery, archive handling, and download. It must be
+present before running `dx_fetch.py`.
+
+Clone it alongside this repo:
+
+```bash
+git clone https://github.com/eastgenomics/dx-grab.git ~/Documents/dx_grab
+```
+
+By default `dx_fetch.py` looks for dx_grab at `~/Documents/dx_grab`. If you
+clone it elsewhere, set the `DXGRAB_DIR` environment variable:
+
+```bash
+export DXGRAB_DIR=/path/to/dx_grab
+```
+
+### dx_fetch.py
+
 `dx_fetch.py` is a precursor helper that downloads everything needed for a
 single MYE run from DNAnexus and prints the ready-to-run
 `contamination_screen.py` command.
@@ -158,13 +180,6 @@ Downloads into `<output>/` (default: `./<project_name>/`):
 
 Control samples (specimen IDs containing `Q`, e.g. `26Q98K0076`) are excluded
 by default. Pass `--no-exclude-controls` to override.
-
-If `dx_grab` is not at `~/Documents/dx_grab`, set the `DXGRAB_DIR` environment
-variable to its location before running:
-
-```bash
-export DXGRAB_DIR=/path/to/dx_grab
-```
 
 ```bash
 # List what would be downloaded (no download)
