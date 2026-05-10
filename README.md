@@ -12,7 +12,7 @@ Suppplementary HTML documents are available both in this repository and hosted o
 |---|---|---|
 | **Algorithm briefing** — visual guide to the contamination signal, filtering, dual-peak detection, flagging thresholds, false positives, and validation | [Contamination_Screen_Code_Review_Briefing.html](Contamination_Screen_Code_Review_Briefing.html) | [view online](https://003-260510-docs-for-sharing.s3.eu-west-2.amazonaws.com/Contamination_Screen_Code_Review_Briefing.html) |
 
-### Code explainer series (for junior bioinformaticians)
+### Code explainer series
 
 | Part | Topic | In repo | Online |
 |---|---|---|---|
