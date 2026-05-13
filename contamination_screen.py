@@ -757,10 +757,12 @@ def write_plots(
     plot_dir = outdir / "plots"
     plot_dir.mkdir(exist_ok=True)
 
-    bins = np.arange(-_LOG2_RANGE, _LOG2_RANGE + bin_width, bin_width)
+    # Use the same half-bin offset as _find_peaks() so the plot histogram bins
+    # are aligned with the analysis bins and peak_count matches the tallest bar.
+    bins = np.arange(-_LOG2_RANGE - bin_width / 2, _LOG2_RANGE + bin_width, bin_width)
 
-    for r in flagged:
-        na, nb = r["sample_a"], r["sample_b"]
+    for pair in flagged:
+        na, nb = pair["sample_a"], pair["sample_b"]
         shared = shared_cache.get((na, nb))
         if shared is None or shared.empty or "log2_ratio" not in shared.columns:
             continue
@@ -777,26 +779,26 @@ def write_plots(
                         ha="center", fontsize=7, color="grey")
 
         # Non-unity peak line (contamination)
-        plr = r.get("peak_log2_ratio", float("nan"))
+        plr = pair.get("peak_log2_ratio", float("nan"))
         if not math.isnan(plr):
-            src = r.get("contamination_source", "?")[:35]
-            cf = r.get("contamination_fraction", float("nan"))
+            src = pair.get("contamination_source", "?")[:35]
+            cf = pair.get("contamination_fraction", float("nan"))
             ax.axvline(plr, color="crimson", linestyle="--", linewidth=1.8,
                        label=(
                            f"Contamination peak: log2 = {plr:.2f} "
                            f"(ratio = {2**plr:.3f})\n"
                            f"Source: {src}\n"
-                           f"n = {r['peak_count']},  "
-                           f"fraction = {r['peak_fraction']:.2f},  "
+                           f"n = {pair['peak_count']},  "
+                           f"fraction = {pair['peak_fraction']:.2f},  "
                            f"contam ~ {cf:.1%}"
                        ))
 
         # Overall peak line (likely germline sharing)
-        olr = r.get("overall_log2", float("nan"))
+        olr = pair.get("overall_log2", float("nan"))
         if not math.isnan(olr) and abs(olr - (plr if not math.isnan(plr) else 99)) > 0.1:
             ax.axvline(olr, color="orange", linestyle="-.", linewidth=1.2,
                        label=f"Overall peak: log2 = {olr:.2f} "
-                             f"(n={r['overall_count']})")
+                             f"(n={pair['overall_count']})")
 
         ax.set_xlabel("log2(VAF_B / VAF_A)")
         ax.set_ylabel("Variant count")

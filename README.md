@@ -178,7 +178,7 @@ Downloads into `<output>/` (default: `./<project_name>/`):
 | `multiqc_general_stats.txt` | Plate well positions (for `--plate-layout`) |
 | `multiqc_verifybamid.txt` | VerifyBamID FREEMIX values (for `--freemix-file`) |
 
-Control samples (specimen IDs containing `Q`, e.g. `26Q98K0076`) are excluded
+Control samples (specimen IDs containing `Q`, e.g. `25357Q0020`) are excluded
 by default. Pass `--no-exclude-controls` to override.
 
 ```bash

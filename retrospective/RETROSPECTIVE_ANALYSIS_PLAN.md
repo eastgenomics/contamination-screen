@@ -1,5 +1,7 @@
 # Retrospective Contamination Screen: Last 100 Haemonc Runs
 
+> **Status: Analysis complete (May 2026).** This document records the plan that was followed. Results are in `retrospective/known_contaminated_samples.tsv` and `retrospective/run_manifest.tsv`.
+
 **Purpose:** Assess whether cross-sample contamination has occurred in the last
 100 haematological oncology Uranus sequencing runs, using anonymised sample
 identifiers to prevent incidental findings.

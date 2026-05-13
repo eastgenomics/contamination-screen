@@ -15,7 +15,7 @@ PROJECT may be:
   - An exact name:      002_260423_A01303_0760_AHLTLCDRX7_MYE
   - A glob pattern:     002_260423*MYE   (must resolve to exactly one project)
 
-Control samples (Q in specimen ID, e.g. 26Q98K0076) are excluded by default.
+Control samples (Q in specimen ID, e.g. 25357Q0020) are excluded by default.
 Pass --no-exclude-controls to include them.
 
 Exit codes:
@@ -92,7 +92,9 @@ def parse_args() -> argparse.Namespace:
     )
     p.add_argument(
         "--exclude", action="append", default=[], metavar="PATTERN",
-        help="Exclude VCFs whose filename matches this glob. Repeatable.",
+        help="Exclude VCFs whose filename matches this glob. Repeatable. "
+             "The default '*Q*' exclusion is applied separately via "
+             "--no-exclude-controls and cannot be overridden with this flag.",
     )
     p.add_argument(
         "--no-exclude-controls", action="store_true",
