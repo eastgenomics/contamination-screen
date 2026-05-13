@@ -34,7 +34,7 @@ the **Uranus clinical pipeline** (CUH Bioinformatics), using VCFs output by the
 
 Validated on a retrospective cohort of 100 consecutive haematological oncology
 sequencing runs (97,310 pairwise comparisons, ~4,400 samples). With default
-thresholds (`--peak-count 10`, `--n-shared-z 2.0`), 128 pairs were flagged
+thresholds (`--non-unity-count 10`, `--n-shared-z 2.0`), 128 pairs were flagged
 across 43 runs.
 
 ### How it works
@@ -107,8 +107,8 @@ identifies sources and estimates the fraction. Sources have near-normal FREEMIX
 | Total pairwise comparisons | 97,310 |
 | Flagged pairs at default thresholds | 128 |
 | Runs with ≥ 1 flagged pair | 43 / 100 |
-| Strongest signal | peak_count=28, n_shared_z=13.4 |
-| Pearson r(FREEMIX, peak_count) within 5–50% FREEMIX band | 0.64 |
+| Strongest signal | non_unity_count=28, n_shared_z=13.4 |
+| Pearson r(FREEMIX, non_unity_count) within 5–50% FREEMIX band | 0.64 |
 
 ---
 
@@ -216,12 +216,12 @@ contamination_screen.py VCF_DIR [options]
 | `--min-af` | `0.03` | VAF floor applied during pre-filtering |
 | `--min-dp` | `99` | Minimum read depth |
 | `--min-shared` | `10` | Minimum shared variants to assess a pair |
-| `--peak-count` | `10` | Flag if non-unity peak has >= N variants |
-| `--n-shared-z` | `2.0` | Flag only if within-run n_shared z-score is at least this value (combined with `--peak-count`) |
+| `--non-unity-count` | `10` | Flag if non-unity peak has >= N variants |
+| `--n-shared-z` | `2.0` | Flag only if within-run n_shared z-score is at least this value (combined with `--non-unity-count`) |
 | `--threads / -t` | `min(8, nCPU)` | Parallel threads |
 | `--include-non-pass` | off | Include non-PASS variants |
 | `--plots` | off | Generate histogram plots for flagged pairs |
-| `--max-output` | `10` | Maximum flagged pairs to write detail TSVs/plots for (ranked by peak_count). Set to 0 for no limit |
+| `--max-output` | `10` | Maximum flagged pairs to write detail TSVs/plots for (ranked by non_unity_count). Set to 0 for no limit |
 | `--force-refilter` | off | Regenerate filtered VCFs even if cached |
 | `--bin-width` | `0.2` | Histogram bin width (log2 units) |
 | `--vcf-glob` | `*_annotated.vcf.gz` | File matching pattern |
@@ -244,7 +244,7 @@ python contamination_screen.py /data/vcfs/ \
 
 # More sensitive (smaller panels or lower contamination)
 python contamination_screen.py /data/vcfs/ \
-    --min-shared 5 --peak-count 8 --n-shared-z 1.5 --outdir results_sensitive/
+    --min-shared 5 --non-unity-count 8 --n-shared-z 1.5 --outdir results_sensitive/
 ```
 
 ---
@@ -256,13 +256,13 @@ results/
 ├── filtered/                          Quality-filtered VCFs (reused on re-runs)
 ├── summary.tsv                        One row per pair (dual-peak results)
 ├── matrix.tsv                         N x N directional contamination matrix
-├── flagged_pairs/*.tsv                Variant-level detail (top N by peak_count)
+├── flagged_pairs/*.tsv                Variant-level detail (top N by non_unity_count)
 └── plots/*.png                        Log2-ratio histograms (top N, --plots only)
 ```
 
 `summary.tsv` and `matrix.tsv` always report **all** pairs. Detail TSVs and
 plots are only generated for the top `--max-output` (default 10) flagged pairs,
-ranked by `peak_count` descending. Set `--max-output 0` to output all flagged pairs.
+ranked by `non_unity_count` descending. Set `--max-output 0` to output all flagged pairs.
 
 If `--plate-layout` is provided, matrix rows and columns are ordered by plate
 position (column-major: A1, B1...H1, A2...), making adjacent-well contamination
@@ -275,9 +275,9 @@ appear as non-zero entries near the diagonal.
 | `sample_a`, `sample_b` | Sample pair |
 | `n_shared` | Total shared variants after all filters |
 | `n_shared_z` | Within-run z-score of `n_shared` across all pairs in this run |
-| `overall_log2`, `overall_count`, `overall_fraction` | Tallest peak across full range (usually ratio=1 from germline sharing) |
-| `peak_log2_ratio`, `peak_ratio` | Non-unity peak centre (the contamination signal) |
-| `peak_count`, `peak_fraction` | Strength of non-unity peak |
+| `max_log2`, `max_ratio`, `max_count`, `max_fraction` | Tallest peak across the full log2-ratio range — typically the germline-sharing peak near ratio=1. Useful for detecting sample swaps. |
+| `non_unity_log2`, `non_unity_ratio` | Non-unity peak centre — the contamination signal. `non_unity_log2` < 0 means source VAF > recipient VAF; sign gives direction. |
+| `non_unity_count`, `non_unity_fraction` | Number of variants in the non-unity peak bin (primary flagging metric); fraction of all shared variants in that bin. |
 | `contamination_source` | Source sample (higher VAF) |
 | `contamination_recipient` | Recipient sample (diluted VAF) |
 | `contamination_fraction` | Estimated fraction of recipient library from source |
@@ -288,14 +288,14 @@ appear as non-zero entries near the diagonal.
 
 ## Interpretation
 
-- **Flagged pair** (`peak_count ≥ 10`, `n_shared_z ≥ 2.0`): strong evidence of
+- **Flagged pair** (`non_unity_count ≥ 10`, `n_shared_z ≥ 2.0`): strong evidence of
   cross-sample contamination. `contamination_source` identifies the origin;
   `contamination_fraction` estimates the level.
 - **Large overall peak at ratio=1**: many variants at identical VAF — suggests a
   sample swap or duplicate rather than contamination.
-- **Borderline** (`peak_count 7–9`, `n_shared_z 1.5–2.0`): inspect the detail
+- **Borderline** (`non_unity_count 7–9`, `n_shared_z 1.5–2.0`): inspect the detail
   TSV. Variants spanning multiple chromosomes indicate contamination; variants
   clustering in one gene indicate linkage artefact.
-- **High peak_count, normal FREEMIX, peak exactly −1.0 against many samples**:
+- **High non_unity_count, normal FREEMIX, peak exactly −1.0 against many samples**:
   likely somatic LOH artefact — inspect in-peak source AFs (expect ~1.0, not 0.5).
 - **No significant peaks**: clean pair.

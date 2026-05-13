@@ -89,7 +89,7 @@ def parse_args() -> argparse.Namespace:
              "assessing a pair (default: %(default)s)",
     )
     p.add_argument(
-        "--peak-count", type=int, default=10,
+        "--non-unity-count", type=int, default=10,
         help="Flag a pair if the non-unity peak contains >= this many "
              "variants (default: %(default)s)",
     )
@@ -97,7 +97,7 @@ def parse_args() -> argparse.Namespace:
         "--n-shared-z", type=float, default=2.0,
         help="Flag a pair only if the within-run z-score of n_shared meets or "
              "exceeds this threshold (computed across all pairs in the run). "
-             "Combined with --peak-count: both conditions must be met. "
+             "Combined with --non-unity-count: both conditions must be met. "
              "(default: %(default)s)",
     )
     p.add_argument(
@@ -116,7 +116,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--max-output", type=int, default=10,
         help="Maximum number of flagged pairs to write detail TSVs and plots "
-             "for, ranked by peak_count (default: %(default)s). "
+             "for, ranked by non_unity_count (default: %(default)s). "
              "Set to 0 for no limit.",
     )
     p.add_argument(
@@ -389,12 +389,12 @@ def _find_peaks(
     reported for completeness (high count = potential swap or relatedness).
 
     Returns dict with keys:
-        overall_log2, overall_count, overall_fraction
-        nonunity_log2, nonunity_count, nonunity_fraction
+        max_log2, max_count, max_fraction
+        non_unity_log2, non_unity_count, non_unity_fraction
     """
     result = {
-        "overall_log2": float("nan"), "overall_count": 0, "overall_fraction": 0.0,
-        "nonunity_log2": float("nan"), "nonunity_count": 0, "nonunity_fraction": 0.0,
+        "max_log2": float("nan"), "max_count": 0, "max_fraction": 0.0,
+        "non_unity_log2": float("nan"), "non_unity_count": 0, "non_unity_fraction": 0.0,
     }
 
     if len(log2_ratios) == 0:
@@ -414,9 +414,9 @@ def _find_peaks(
 
     # Overall peak (tallest bin across full range)
     idx_overall = int(np.argmax(counts))
-    result["overall_log2"] = float(centers[idx_overall])
-    result["overall_count"] = int(counts[idx_overall])
-    result["overall_fraction"] = float(counts[idx_overall]) / n_total
+    result["max_log2"] = float(centers[idx_overall])
+    result["max_count"] = int(counts[idx_overall])
+    result["max_fraction"] = float(counts[idx_overall]) / n_total
 
     # Non-unity peak (tallest bin where |log2| > 0.3, i.e. ratio outside 0.81-1.23)
     nonunity_mask = np.abs(centers) > 0.3
@@ -425,9 +425,9 @@ def _find_peaks(
 
     if nonunity_counts.max() > 0:
         idx_nonunity = int(np.argmax(nonunity_counts))
-        result["nonunity_log2"] = float(centers[idx_nonunity])
-        result["nonunity_count"] = int(counts[idx_nonunity])
-        result["nonunity_fraction"] = float(counts[idx_nonunity]) / n_total
+        result["non_unity_log2"] = float(centers[idx_nonunity])
+        result["non_unity_count"] = int(counts[idx_nonunity])
+        result["non_unity_fraction"] = float(counts[idx_nonunity]) / n_total
 
     return result
 
@@ -449,8 +449,8 @@ def _compare(
     so no additional VAF threshold is applied here.
 
     Directionality (from non-unity peak):
-        peak_log2_ratio < 0  =>  AF_A > AF_B  =>  A is the contamination source
-        peak_log2_ratio > 0  =>  AF_B > AF_A  =>  B is the contamination source
+        non_unity_log2 < 0  =>  AF_A > AF_B  =>  A is the contamination source
+        non_unity_log2 > 0  =>  AF_B > AF_A  =>  B is the contamination source
     """
     merged = pd.merge(
         df_a[["chrom", "pos", "ref", "alt", "filter_col", "af", "gene"]].rename(
@@ -468,11 +468,11 @@ def _compare(
         "sample_a": name_a, "sample_b": name_b,
         "n_shared": n_shared,
         # Overall peak (includes ratio=1 from shared germline)
-        "overall_log2": nan, "overall_ratio": nan,
-        "overall_count": 0, "overall_fraction": 0.0,
+        "max_log2": nan, "max_ratio": nan,
+        "max_count": 0, "max_fraction": 0.0,
         # Non-unity peak (the contamination signal)
-        "peak_log2_ratio": nan, "peak_ratio": nan,
-        "peak_count": 0, "peak_fraction": 0.0,
+        "non_unity_log2": nan, "non_unity_ratio": nan,
+        "non_unity_count": 0, "non_unity_fraction": 0.0,
         # Directionality (derived from non-unity peak)
         "contamination_source": "", "contamination_recipient": "",
         "contamination_fraction": nan,
@@ -501,29 +501,29 @@ def _compare(
 
     # Update overall peak
     result.update({
-        "overall_log2": peaks["overall_log2"],
-        "overall_ratio": (
-            2.0 ** peaks["overall_log2"]
-            if not math.isnan(peaks["overall_log2"]) else nan
+        "max_log2": peaks["max_log2"],
+        "max_ratio": (
+            2.0 ** peaks["max_log2"]
+            if not math.isnan(peaks["max_log2"]) else nan
         ),
-        "overall_count": peaks["overall_count"],
-        "overall_fraction": peaks["overall_fraction"],
+        "max_count": peaks["max_count"],
+        "max_fraction": peaks["max_fraction"],
     })
 
     # Update non-unity peak (contamination signal)
     result.update({
-        "peak_log2_ratio": peaks["nonunity_log2"],
-        "peak_ratio": (
-            2.0 ** peaks["nonunity_log2"]
-            if not math.isnan(peaks["nonunity_log2"]) else nan
+        "non_unity_log2": peaks["non_unity_log2"],
+        "non_unity_ratio": (
+            2.0 ** peaks["non_unity_log2"]
+            if not math.isnan(peaks["non_unity_log2"]) else nan
         ),
-        "peak_count": peaks["nonunity_count"],
-        "peak_fraction": peaks["nonunity_fraction"],
+        "non_unity_count": peaks["non_unity_count"],
+        "non_unity_fraction": peaks["non_unity_fraction"],
     })
 
     # Mark variants in non-unity peak bin
-    plr = peaks["nonunity_log2"]
-    if not math.isnan(plr) and peaks["nonunity_count"] > 0:
+    plr = peaks["non_unity_log2"]
+    if not math.isnan(plr) and peaks["non_unity_count"] > 0:
         half = bin_width / 2.0
         merged["in_peak"] = (
             (merged["log2_ratio"] >= plr - half) &
@@ -580,7 +580,7 @@ def _load_freemix(freemix_file: Path) -> dict:
 def _apply_flags(
     results: List[dict],
     min_shared: int,
-    peak_count_thresh: int,
+    non_unity_count_thresh: int,
     n_shared_z_thresh: float,
     freemix: Optional[dict] = None,
     freemix_threshold: float = 0.15,
@@ -589,7 +589,7 @@ def _apply_flags(
 
     Flagging requires all of:
       - n_shared >= min_shared
-      - peak_count >= peak_count_thresh
+      - non_unity_count >= non_unity_count_thresh
       - n_shared_z >= n_shared_z_thresh  (within-run z-score of n_shared)
       - recipient FREEMIX >= freemix_threshold  (only when freemix dict supplied)
     """
@@ -601,7 +601,7 @@ def _apply_flags(
 
     base_flag = (
         (df["n_shared"] >= min_shared) &
-        (df["peak_count"] >= peak_count_thresh) &
+        (df["non_unity_count"] >= non_unity_count_thresh) &
         (df["n_shared_z"] >= n_shared_z_thresh)
     )
 
@@ -626,9 +626,9 @@ def _apply_flags(
     else:
         df["flagged"] = base_flag
 
-    for col in ["overall_log2", "overall_ratio", "overall_fraction",
-                "peak_log2_ratio", "peak_ratio",
-                "peak_fraction", "contamination_fraction"]:
+    for col in ["max_log2", "max_ratio", "max_fraction",
+                "non_unity_log2", "non_unity_ratio",
+                "non_unity_fraction", "contamination_fraction"]:
         if col in df.columns:
             df[col] = df[col].round(4)
     return df
@@ -703,7 +703,7 @@ def write_matrix(
         src = r.get("contamination_source", "")
         rec = r.get("contamination_recipient", "")
         if src and rec and src in idx and rec in idx:
-            matrix[idx[rec], idx[src]] = r["peak_count"]
+            matrix[idx[rec], idx[src]] = r["non_unity_count"]
 
     df = pd.DataFrame(matrix, index=sample_names, columns=sample_names)
     df.index.name = "recipient \\ source"
@@ -779,7 +779,7 @@ def write_plots(
                         ha="center", fontsize=7, color="grey")
 
         # Non-unity peak line (contamination)
-        plr = pair.get("peak_log2_ratio", float("nan"))
+        plr = pair.get("non_unity_log2", float("nan"))
         if not math.isnan(plr):
             src = pair.get("contamination_source", "?")[:35]
             cf = pair.get("contamination_fraction", float("nan"))
@@ -788,17 +788,17 @@ def write_plots(
                            f"Contamination peak: log2 = {plr:.2f} "
                            f"(ratio = {2**plr:.3f})\n"
                            f"Source: {src}\n"
-                           f"n = {pair['peak_count']},  "
-                           f"fraction = {pair['peak_fraction']:.2f},  "
+                           f"n = {pair['non_unity_count']},  "
+                           f"fraction = {pair['non_unity_fraction']:.2f},  "
                            f"contam ~ {cf:.1%}"
                        ))
 
         # Overall peak line (likely germline sharing)
-        olr = pair.get("overall_log2", float("nan"))
+        olr = pair.get("max_log2", float("nan"))
         if not math.isnan(olr) and abs(olr - (plr if not math.isnan(plr) else 99)) > 0.1:
             ax.axvline(olr, color="orange", linestyle="-.", linewidth=1.2,
                        label=f"Overall peak: log2 = {olr:.2f} "
-                             f"(n={pair['overall_count']})")
+                             f"(n={pair['max_count']})")
 
         ax.set_xlabel("log2(VAF_B / VAF_A)")
         ax.set_ylabel("Variant count")
@@ -949,7 +949,7 @@ def main() -> None:
     summary_df = _apply_flags(
         raw_results,
         min_shared=args.min_shared,
-        peak_count_thresh=args.peak_count,
+        non_unity_count_thresh=args.non_unity_count,
         n_shared_z_thresh=args.n_shared_z,
         freemix=freemix_data,
         freemix_threshold=args.freemix_threshold,
@@ -976,7 +976,7 @@ def main() -> None:
 
     if flagged:
         # Sort by peak_count descending - most suspicious first
-        flagged.sort(key=lambda r: r["peak_count"], reverse=True)
+        flagged.sort(key=lambda r: r["non_unity_count"], reverse=True)
 
         # Limit detail/plot output to top N
         if args.max_output > 0:
