@@ -804,7 +804,7 @@ def write_plots(
         ax.set_ylabel("Variant count")
         ax.set_title(
             f"{na[:45]}  vs  {nb[:45]}\n"
-            f"n_shared = {r['n_shared']}",
+            f"n_shared = {pair['n_shared']}",
             fontsize=8,
         )
         ax.legend(fontsize=7, loc="upper left")

@@ -29,7 +29,7 @@ def test_a_contaminates_b():
     result, _ = _compare("sampleA", df_a, "sampleB", df_b, bin_width=0.2)
     assert result["contamination_source"] == "sampleA", f"Expected sampleA as source, got {result['contamination_source']}"
     assert result["contamination_recipient"] == "sampleB"
-    assert result["non_unity_log2"] < 0, f"Expected negative log2, got {result['peak_log2_ratio']}"
+    assert result["non_unity_log2"] < 0, f"Expected negative log2, got {result['non_unity_log2']}"
     assert result["non_unity_count"] == 20
     print("PASS: test_a_contaminates_b")
 
@@ -42,7 +42,7 @@ def test_b_contaminates_a():
     result, _ = _compare("sampleA", df_a, "sampleB", df_b, bin_width=0.2)
     assert result["contamination_source"] == "sampleB", f"Expected sampleB as source, got {result['contamination_source']}"
     assert result["contamination_recipient"] == "sampleA"
-    assert result["non_unity_log2"] > 0, f"Expected positive log2, got {result['peak_log2_ratio']}"
+    assert result["non_unity_log2"] > 0, f"Expected positive log2, got {result['non_unity_log2']}"
     assert result["non_unity_count"] == 20
     print("PASS: test_b_contaminates_a")
 
@@ -58,7 +58,7 @@ def test_no_contamination_similar_af():
     df_b["af"] = df_b["af"].clip(0.03, 1.0)
     result, _ = _compare("sampleA", df_a, "sampleB", df_b, bin_width=0.2)
     # Non-unity peak should be weak (most variants in unity zone)
-    assert result["non_unity_count"] <= 5, f"Expected weak non-unity peak, got {result['peak_count']}"
+    assert result["non_unity_count"] <= 5, f"Expected weak non-unity peak, got {result['non_unity_count']}"
     print("PASS: test_no_contamination_similar_af")
 
 
