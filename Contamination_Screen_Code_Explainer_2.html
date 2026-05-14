@@ -1,0 +1,440 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Code Explainer 2 — Module Structure</title>
+<style>
+  :root{
+    --ink:#0d1b2a; --ink-soft:#354656; --muted:#6b7c8d;
+    --line:#e0e7ef; --line-strong:#c5d0db;
+    --bg:#f7f9fb; --paper:#ffffff;
+    --accent:#005eb8; --accent-deep:#003d78; --accent-mid:#1a73c4; --accent-soft:#e3edf8;
+    --green:#1a6e47; --green-soft:#e0f0e8;
+    --amber:#b35c00; --amber-soft:#fdf0e0;
+    --red:#9b2335; --red-soft:#fce8ea;
+    --purple:#4b2d8e; --purple-soft:#ede8f8;
+    --shadow:0 1px 3px rgba(13,27,42,.05),0 4px 20px rgba(13,27,42,.08);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{background:var(--bg);color:var(--ink);
+    font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;}
+  a{color:var(--accent-mid);text-decoration:none}
+  a:hover{text-decoration:underline}
+  .layout{display:grid;grid-template-columns:270px minmax(0,1fr);max-width:1320px;margin:0 auto}
+  @media(max-width:860px){.layout{grid-template-columns:1fr}.toc{display:none}}
+  main{padding:0 56px 96px;max-width:900px}
+  @media(max-width:860px){main{padding:0 24px 64px}}
+  h1{font-size:38px;line-height:1.1;letter-spacing:-.015em;font-weight:800;color:var(--ink);margin-bottom:14px;max-width:22ch}
+  h2{font-size:24px;font-weight:700;margin-bottom:16px;display:flex;align-items:center;gap:12px}
+  h2 .sec-num{font-size:12px;letter-spacing:.06em;text-transform:uppercase;background:var(--accent);color:#fff;padding:3px 9px;border-radius:999px;font-weight:700;white-space:nowrap}
+  h3{font-size:17px;font-weight:700;margin:28px 0 10px;color:var(--ink)}
+  h4{font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:20px 0 8px;font-weight:600}
+  p{margin-bottom:13px;color:var(--ink-soft)}
+  strong{color:var(--ink)}
+  ul,ol{margin:0 0 14px;padding-left:22px}
+  li{margin:5px 0;color:var(--ink-soft)}
+  code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;background:#f0f4f8;padding:2px 6px;border-radius:3px;color:var(--accent-deep)}
+
+  .toc{position:sticky;top:0;align-self:start;height:100vh;overflow-y:auto;padding:28px 24px;background:var(--paper);border-right:1px solid var(--line);font-size:13px}
+  .toc-brand{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--accent-deep);margin-bottom:20px;line-height:1.4}
+  .toc-section{font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin:18px 0 6px}
+  .toc ul{list-style:none}
+  .toc ul li a{display:block;padding:5px 0 5px 16px;color:var(--ink-soft);border-left:2px solid transparent;transition:all .15s;font-size:12.5px;line-height:1.4}
+  .toc ul li a:hover{color:var(--accent);border-left-color:var(--accent);text-decoration:none;padding-left:20px}
+  .toc .meta{margin-top:22px;padding-top:18px;border-top:1px solid var(--line);font-size:11.5px;color:var(--muted);line-height:1.6}
+
+  .hero{padding:52px 0 36px;border-bottom:1px solid var(--line);margin-bottom:8px}
+  .hero .eyebrow{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);font-weight:700;margin-bottom:12px}
+  .hero h1{font-size:38px;line-height:1.1;letter-spacing:-.015em;font-weight:800;color:var(--ink);margin-bottom:14px;max-width:22ch}
+  .hero .sub{font-size:17px;line-height:1.55;color:var(--ink-soft);max-width:64ch}
+  .hero .meta-row{display:flex;gap:24px;margin-top:20px;flex-wrap:wrap}
+  .hero .meta-item{font-size:12px;color:var(--muted)}
+  .hero .meta-item strong{color:var(--ink-soft)}
+
+  section{padding-top:52px}
+  section+section{border-top:1px solid var(--line)}
+  footer{padding:32px 56px;color:var(--muted);font-size:12px;border-top:1px solid var(--line);max-width:1320px;margin:0 auto;line-height:1.7}
+
+  .callout{border-radius:6px;padding:18px 22px;margin:18px 0;border:1px solid}
+  .callout.blue{border-color:#b3cce8;background:var(--accent-soft)}
+  .callout.green{border-color:#a8d4bb;background:var(--green-soft)}
+  .callout.amber{border-color:#e8c28a;background:var(--amber-soft)}
+  .callout.red{border-color:#e8a8a8;background:var(--red-soft)}
+  .callout.purple{border-color:#c5b8e8;background:var(--purple-soft)}
+  .callout .tag{display:block;font-size:11px;letter-spacing:.08em;text-transform:uppercase;font-weight:700;margin-bottom:6px}
+  .callout.blue .tag{color:var(--accent-deep)}
+  .callout.green .tag{color:var(--green)}
+  .callout.amber .tag{color:var(--amber)}
+  .callout.red .tag{color:var(--red)}
+  .callout.purple .tag{color:var(--purple)}
+  .callout p:last-child{margin:0}
+
+  table{width:100%;border-collapse:collapse;margin:16px 0;font-size:14px}
+  th,td{text-align:left;padding:11px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{background:#f0f4f8;font-weight:600;font-size:12.5px;color:var(--ink);letter-spacing:.02em}
+  tr:hover td{background:#fafbfd}
+  .pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:600;letter-spacing:.04em}
+  .pill.green{background:var(--green-soft);color:var(--green)}
+  .pill.amber{background:var(--amber-soft);color:var(--amber)}
+  .pill.blue{background:var(--accent-soft);color:var(--accent-deep)}
+  .pill.purple{background:var(--purple-soft);color:var(--purple)}
+  .pill.red{background:var(--red-soft);color:var(--red)}
+
+  /* Code blocks */
+  .cb{background:#1e2d3d;border-radius:8px;padding:20px 22px;margin:16px 0;overflow-x:auto}
+  .cb pre{color:#cdd9e5;font:13px/1.75 ui-monospace,Menlo,Consolas,monospace;margin:0;white-space:pre}
+  .cb .c{color:#6e9cbf}   /* comment */
+  .cb .k{color:#79b8ff}   /* keyword */
+  .cb .s{color:#9ecbff}   /* string */
+  .cb .n{color:#b392f0}   /* number / constant */
+  .cb .f{color:#85e89d}   /* function name */
+  .cb .t{color:#ffab70}   /* type / class */
+
+  /* Annotation list */
+  .anno{list-style:none;margin:4px 0 24px;padding:0;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+  .anno li{display:grid;grid-template-columns:36px 1fr;gap:0;border-bottom:1px solid var(--line);font-size:13.5px}
+  .anno li:last-child{border-bottom:none}
+  .anno .num{background:var(--accent-deep);color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;font-family:ui-monospace,Menlo,Consolas,monospace}
+  .anno .txt{padding:10px 14px;color:var(--ink-soft);line-height:1.5}
+  .anno .txt strong{color:var(--ink)}
+
+  /* File section header */
+  .file-section{display:flex;align-items:center;gap:12px;padding:10px 16px;background:#f0f4f8;border:1px solid var(--line);border-radius:6px;margin:20px 0 8px;font-size:13px}
+  .file-section .fs-range{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;color:var(--muted)}
+  .file-section .fs-name{font-weight:700;color:var(--ink)}
+
+  .series-nav{display:flex;gap:8px;flex-wrap:wrap;margin:18px 0}
+  .series-nav a{display:inline-block;padding:6px 14px;border-radius:6px;font-size:12.5px;font-weight:600;border:1px solid var(--line);background:var(--paper);color:var(--ink-soft)}
+  .series-nav a.current{background:var(--accent-deep);color:#fff;border-color:var(--accent-deep)}
+  .series-nav a:hover{border-color:var(--accent);color:var(--accent);text-decoration:none}
+</style>
+</head>
+<body>
+<div class="layout">
+
+<aside class="toc">
+  <div class="toc-brand">PERSONAL BRIEFING — CONTAMINATION SCREEN CODE<br>10 May 2026</div>
+  <div class="toc-section">This document</div>
+  <ul>
+    <li><a href="#shebang">Shebang and docstring</a></li>
+    <li><a href="#stdlib-imports">Standard library imports</a></li>
+    <li><a href="#third-party">Third-party imports</a></li>
+    <li><a href="#constants">Constants</a></li>
+    <li><a href="#sections">File section layout</a></li>
+    <li><a href="#naming">Naming conventions</a></li>
+    <li><a href="#type-hints">Type hints</a></li>
+  </ul>
+  <div class="meta">Part 2 of 5<br>Lines 1–50<br>contamination_screen.py</div>
+</aside>
+
+<main>
+<header class="hero">
+  <div class="eyebrow">Code explainer · Part 2 of 5 · Module structure</div>
+  <h1>Imports, constants, and layout</h1>
+  <p class="sub">Everything at the top of the file before the first function: what each import is actually used for, why the constants have the values they do, and how the file's section structure helps you navigate 1,009 lines.</p>
+  <div class="meta-row">
+    <span class="meta-item"><strong>Author</strong> Joo Wook Ahn</span>
+    <span class="meta-item"><strong>Date</strong> 10 May 2026</span>
+    <span class="meta-item"><strong>Covers</strong> Lines 1–50 of contamination_screen.py</span>
+  </div>
+</header>
+
+<div class="series-nav">
+  <a href="Contamination_Screen_Code_Explainer_1.html">1 · High-level outline</a>
+  <a href="Contamination_Screen_Code_Explainer_2.html" class="current">2 · Module structure</a>
+  <a href="Contamination_Screen_Code_Explainer_3.html">3 · Key concepts</a>
+  <a href="Contamination_Screen_Code_Explainer_4.html">4 · Function walkthrough</a>
+  <a href="Contamination_Screen_Code_Explainer_5.html">5 · Line-by-line reference</a>
+</div>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<section id="shebang">
+  <h2><span class="sec-num">01</span> Shebang line and module docstring</h2>
+
+  <div class="file-section">
+    <span class="fs-name">contamination_screen.py</span>
+    <span class="fs-range">Lines 1–15</span>
+  </div>
+
+  <div class="cb"><pre><span class="c">#!/usr/bin/env python3</span>
+<span class="s">"""
+contamination_screen.py
+
+Pairwise cross-sample contamination detector for tumour sequencing panel VCFs.
+
+Screens a cohort of VCFs for cross-sample contamination by detecting shared
+variants at consistent VAF ratios. Uses a dual-peak approach: reports both the
+dominant ratio peak (typically ratio ~1 from shared germline) and the dominant
+non-unity peak (the contamination signal).
+
+Designed for Uranus pipeline (CUH Bioinformatics) haematological oncology panel
+VCFs output by the eggd_vep stage. Input VCFs must already have been normalised
+with bcftools norm -m -any.
+"""</span></pre></div>
+
+  <ul class="anno">
+    <li><div class="num">1</div><div class="txt"><strong>Shebang line (<code>#!/usr/bin/env python3</code>).</strong> This tells your operating system which interpreter to use when running the file directly (e.g. <code>./contamination_screen.py</code>). <code>/usr/bin/env python3</code> is portable — it finds whichever <code>python3</code> is first on your <code>$PATH</code>, rather than hardcoding a path like <code>/usr/bin/python3</code>. You only need this if you plan to execute the file directly; running it as <code>python3 contamination_screen.py</code> ignores this line.</div></li>
+    <li><div class="num">2</div><div class="txt"><strong>Module docstring.</strong> A triple-quoted string immediately after the shebang becomes the module's <code>__doc__</code> attribute. More importantly for this tool, it also appears verbatim as the help text when you run <code>python3 contamination_screen.py --help</code>, because <code>parse_args()</code> passes <code>__doc__</code> to <code>argparse.ArgumentParser(description=__doc__)</code>. Keep this docstring accurate — it is the user-facing description of the tool.</div></li>
+  </ul>
+</section>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<section id="stdlib-imports">
+  <h2><span class="sec-num">02</span> Standard library imports</h2>
+
+  <div class="file-section">
+    <span class="fs-name">contamination_screen.py</span>
+    <span class="fs-range">Lines 17–31</span>
+  </div>
+
+  <div class="cb"><pre><span class="k">import</span> argparse          <span class="c"># ①</span>
+<span class="k">import</span> logging           <span class="c"># ②</span>
+<span class="k">import</span> math              <span class="c"># ③</span>
+<span class="k">import</span> os               <span class="c"># ④</span>
+<span class="k">import</span> re               <span class="c"># ⑤</span>
+<span class="k">import</span> subprocess        <span class="c"># ⑥</span>
+<span class="k">import</span> sys              <span class="c"># ⑦</span>
+<span class="k">import</span> threading         <span class="c"># ⑧</span>
+<span class="k">from</span> concurrent.futures <span class="k">import</span> ThreadPoolExecutor  <span class="c"># ⑨</span>
+<span class="k">from</span> itertools <span class="k">import</span> combinations               <span class="c"># ⑩</span>
+<span class="k">from</span> pathlib <span class="k">import</span> Path                          <span class="c"># ⑪</span>
+<span class="k">from</span> typing <span class="k">import</span> Dict, List, Optional, Tuple   <span class="c"># ⑫</span></pre></div>
+
+  <ul class="anno">
+    <li><div class="num">①</div><div class="txt"><strong><code>argparse</code> — command-line interface.</strong> Used only in <code>parse_args()</code>. Defines all the <code>--flags</code> the user can pass, their defaults, types, and help strings. Calling <code>p.parse_args()</code> returns a <code>Namespace</code> object — think of it as a plain object where each argument becomes an attribute, e.g. <code>args.peak_count</code>, <code>args.outdir</code>.</div></li>
+    <li><div class="num">②</div><div class="txt"><strong><code>logging</code> — timestamped terminal output.</strong> Used throughout the file via <code>logging.info()</code>, <code>logging.warning()</code>, <code>logging.error()</code>, <code>logging.debug()</code>. Configured once in <code>main()</code> with <code>logging.basicConfig()</code>. Using <code>logging</code> instead of <code>print()</code> means you get timestamps, severity levels, and the ability to suppress debug messages in production (<code>--verbose</code> enables debug).</div></li>
+    <li><div class="num">③</div><div class="txt"><strong><code>math</code> — used for one thing: <code>math.isnan()</code>.</strong> Several columns in the results dict are initialised to <code>float("nan")</code> when there is no value (e.g. no non-unity peak found). Before performing arithmetic on these values, the code checks <code>math.isnan(value)</code>. Note: numpy has <code>np.isnan()</code> too, but <code>math.isnan()</code> is used for scalar floats, which is slightly faster and more explicit.</div></li>
+    <li><div class="num">④</div><div class="txt"><strong><code>os</code> — used for one thing: <code>os.cpu_count()</code>.</strong> The default thread count is set to <code>min(8, os.cpu_count() or 1)</code>. <code>os.cpu_count()</code> returns the number of logical CPU cores, or <code>None</code> on some systems — the <code>or 1</code> handles the None case. The cap at 8 prevents over-threading on large servers.</div></li>
+    <li><div class="num">⑤</div><div class="txt"><strong><code>re</code> — regular expressions.</strong> Used in two places: (1) in <code>write_flagged_details()</code> and <code>write_plots()</code> to sanitise sample names before using them as filenames — <code>re.sub(r"[^A-Za-z0-9_\-]", "_", name)</code> replaces any character that is not a letter, digit, underscore, or hyphen with an underscore. (2) In <code>_get_plate_order()</code> to filter out per-lane FASTQ rows from MultiQC output.</div></li>
+    <li><div class="num">⑥</div><div class="txt"><strong><code>subprocess</code> — running external programs.</strong> Used to call bcftools. Two patterns appear: <code>subprocess.run()</code> (via the <code>_run()</code> wrapper, for simple commands) and <code>subprocess.Popen()</code> (in <code>filter_vcf()</code>, for the piped 4-stage pipeline). The difference is important — see Document 3 (Key Concepts) for a full explanation.</div></li>
+    <li><div class="num">⑦</div><div class="txt"><strong><code>sys</code> — used for one thing: <code>sys.exit(1)</code>.</strong> The code calls this whenever a fatal error occurs (e.g. VCF directory not found, bcftools fails). Exiting with code <code>1</code> tells the calling shell that the script failed. Exiting with <code>0</code> means success. This convention is important for scripting — a pipeline can check the exit code.</div></li>
+    <li><div class="num">⑧</div><div class="txt"><strong><code>threading</code> — background stderr-draining threads.</strong> Used only in <code>filter_vcf()</code>. When running a chain of four piped subprocesses, each process's stderr must be continuously read to prevent the OS pipe buffer from filling up and causing a deadlock. A <code>threading.Thread</code> is spawned for each process to drain stderr in the background. See Document 3 for a full explanation of this pattern.</div></li>
+    <li><div class="num">⑨</div><div class="txt"><strong><code>ThreadPoolExecutor</code> — parallel pairwise comparisons.</strong> The key parallelism primitive. In Phase 3, <code>executor.map(_worker, tasks)</code> distributes the list of pairwise comparison tasks across a pool of threads. Each thread runs <code>_worker()</code> independently. The results come back in the same order as the input tasks. See Document 3 for when threads help and when they don't.</div></li>
+    <li><div class="num">⑩</div><div class="txt"><strong><code>combinations</code> — generating unique pairs.</strong> <code>combinations(sample_names, 2)</code> yields every unique ordered pair from the list without repetition and without self-pairs. For <code>["A","B","C"]</code> it gives <code>("A","B"), ("A","C"), ("B","C")</code> — exactly the 3 = 3×2/2 unique pairs. This is used to build the <code>tasks</code> list in Phase 3.</div></li>
+    <li><div class="num">⑪</div><div class="txt"><strong><code>Path</code> from <code>pathlib</code> — file path objects.</strong> Every file path in the code is a <code>Path</code> object rather than a plain string. <code>Path</code> objects support clean syntax: <code>outdir / "filtered"</code> joins paths correctly on any OS, <code>vcf.stem</code> gives the filename without extension, <code>path.exists()</code> checks existence, <code>path.mkdir(parents=True)</code> creates directories. Much safer and cleaner than string concatenation with <code>"/"</code>.</div></li>
+    <li><div class="num">⑫</div><div class="txt"><strong>Type hints from <code>typing</code>.</strong> Used in function signatures like <code>def _compare(...) -&gt; Tuple[dict, Optional[pd.DataFrame]]</code>. These are purely documentation — Python does not enforce them at runtime. They tell a reader (or a type checker like mypy) exactly what types a function expects and returns. <code>Optional[X]</code> means the value can be <code>X</code> or <code>None</code>. In Python 3.9+ you could write <code>dict | None</code> directly, but the <code>typing</code> imports keep compatibility with Python 3.8.</div></li>
+  </ul>
+</section>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<section id="third-party">
+  <h2><span class="sec-num">03</span> Third-party imports</h2>
+
+  <div class="file-section">
+    <span class="fs-name">contamination_screen.py</span>
+    <span class="fs-range">Lines 33–34</span>
+  </div>
+
+  <div class="cb"><pre><span class="k">import</span> numpy <span class="k">as</span> np   <span class="c"># ①</span>
+<span class="k">import</span> pandas <span class="k">as</span> pd  <span class="c"># ②</span></pre></div>
+
+  <ul class="anno">
+    <li><div class="num">①</div><div class="txt"><strong><code>numpy</code> aliased as <code>np</code>.</strong> Used in <code>_find_peaks()</code> for the histogram: <code>np.histogram()</code>, <code>np.argmax()</code>, <code>np.arange()</code>, boolean array masking, and <code>np.log2()</code> indirectly through the ratios. Also used in <code>write_matrix()</code> to initialise an N×N integer matrix with <code>np.zeros()</code>. The <code>as np</code> alias is universal Python convention — you will see it in every scientific Python codebase.</div></li>
+    <li><div class="num">②</div><div class="txt"><strong><code>pandas</code> aliased as <code>pd</code>.</strong> Used for two main things: (1) <strong>DataFrames</strong> — tabular data with named columns, used to store variants per sample (<code>df_cache</code>) and to merge two samples' variant sets (<code>pd.merge()</code> in <code>_compare()</code>); (2) <strong>CSV writing</strong> — <code>df.to_csv()</code> writes TSV output files. The <code>as pd</code> alias is also universal convention.</div></li>
+  </ul>
+
+  <div class="callout amber">
+    <span class="tag">Why no matplotlib import at the top?</span>
+    <p>matplotlib is imported <em>inside</em> <code>write_plots()</code>, not at the top of the file. This is intentional: matplotlib is optional (only needed with <code>--plots</code>) and is slow to import. Importing it inside the function means the tool starts up quickly even if matplotlib is not installed — it only fails at the point where a plot is actually requested.</p>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<section id="constants">
+  <h2><span class="sec-num">04</span> Constants</h2>
+
+  <div class="file-section">
+    <span class="fs-name">contamination_screen.py</span>
+    <span class="fs-range">Lines 37–47</span>
+  </div>
+
+  <div class="cb"><pre><span class="c"># Histogram parameters</span>
+_LOG2_RANGE = <span class="n">4.0</span>   <span class="c"># ①</span>
+_BIN_WIDTH  = <span class="n">0.2</span>   <span class="c"># ②</span>
+
+<span class="c"># Default glob for VCF files</span>
+VCF_GLOB = <span class="s">"*_annotated.vcf.gz"</span>  <span class="c"># ③</span>
+
+<span class="c"># Default gnomAD AF threshold</span>
+_MAX_GNOMAD_AF = <span class="n">0.40</span>  <span class="c"># ④</span>
+
+<span class="c"># Gene symbol extracted by bcftools +split-vep as CSQ_SYMBOL</span>  <span class="c"># ⑤</span></pre></div>
+
+  <ul class="anno">
+    <li><div class="num">①</div><div class="txt"><strong><code>_LOG2_RANGE = 4.0</code> — the x-axis span of the histogram.</strong> The histogram covers log2 ratios from −4.0 to +4.0. In ratio terms, this is 2⁻⁴ to 2⁴ = 1:16 to 16:1. Any contamination fraction from ~6% (ratio ≈ 0.06, log2 ≈ −4) to ~94% is visible. In practice, contamination above 50% is very rare (and would look like a swap), so this range comfortably covers all real cases. The leading underscore signals this is a module-level private constant — it can still be overridden via the <code>--bin-width</code> argument.</div></li>
+    <li><div class="num">②</div><div class="txt"><strong><code>_BIN_WIDTH = 0.2</code> — histogram resolution.</strong> Each bin spans 0.2 log2 units. A ratio of exactly 0.5 (50% contamination, log2 = −1.0) and a ratio of 0.48 (log2 = −1.06) both fall in the same bin. Narrower bins give finer resolution but need more variants per bin to show a clear peak. 0.2 was chosen empirically: it is fine enough to separate peaks at different contamination fractions, but wide enough that 10+ variants cluster into a single peak even at modest contamination levels. This is also the default for <code>--bin-width</code>.</div></li>
+    <li><div class="num">③</div><div class="txt"><strong><code>VCF_GLOB = "*_annotated.vcf.gz"</code> — filename pattern.</strong> This glob pattern is used to discover VCF files in the input directory. It matches filenames ending in <code>_annotated.vcf.gz</code>, which is the naming convention for eggd_vep output in the Uranus pipeline. If you use this tool with a different pipeline, you would override this with <code>--vcf-glob</code>. Note this is the only constant without a leading underscore — it is also used as the default value in the argument parser, so it needs to be publicly accessible.</div></li>
+    <li><div class="num">④</div><div class="txt"><strong><code>_MAX_GNOMAD_AF = 0.40</code> — the gnomAD population frequency threshold.</strong> Variants with gnomAD AF ≥ 0.40 are excluded during pre-filtering. The value 0.40 was chosen empirically: at this frequency, 16% of individuals are homozygous-alt (AF² = 0.16), creating a 2:1 ratio against any heterozygous individual that exactly mimics 50% contamination. The briefing document explains this in full with empirical data. Overridable via <code>--max-gnomad</code>.</div></li>
+    <li><div class="num">⑤</div><div class="txt"><strong>The final comment (no constant).</strong> This is just a note explaining that <code>CSQ_SYMBOL</code> (the gene name field) is produced by bcftools <code>+split-vep</code> in Phase 1, so it is available in the filtered VCFs loaded in Phase 2. It is documentation, not code.</div></li>
+  </ul>
+
+  <div class="callout blue">
+    <span class="tag">Why are some constants prefixed with underscore?</span>
+    <p><code>_LOG2_RANGE</code>, <code>_BIN_WIDTH</code>, and <code>_MAX_GNOMAD_AF</code> all start with <code>_</code> because they are internal defaults that the rest of the module uses directly. They are not part of any public API. <code>VCF_GLOB</code> has no underscore because it is explicitly referenced in the argument parser as a visible default value. The distinction is a signal to readers, not enforced by Python.</p>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<section id="sections">
+  <h2><span class="sec-num">05</span> File section layout</h2>
+
+  <p>The file is divided into eight labelled sections using comment banners. These help you navigate the 1,009 lines without an IDE. Each section groups related functions.</p>
+
+  <table>
+    <thead>
+      <tr><th>Section banner</th><th>Approximate lines</th><th>Contents</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code># -- Constants --</code></td>
+        <td>37–47</td>
+        <td>The four module-level constants described above</td>
+      </tr>
+      <tr>
+        <td><code># -- Argument parsing --</code></td>
+        <td>50–120</td>
+        <td><code>parse_args()</code> — the CLI definition</td>
+      </tr>
+      <tr>
+        <td><code># -- bcftools helpers --</code></td>
+        <td>123–254</td>
+        <td><code>_run()</code>, <code>get_sample_name()</code>, <code>_drain_stderr()</code>, <code>_csq_gnomad_fields()</code>, <code>filter_vcf()</code></td>
+      </tr>
+      <tr>
+        <td><code># -- VCF loading --</code></td>
+        <td>257–315</td>
+        <td><code>load_vcf()</code></td>
+      </tr>
+      <tr>
+        <td><code># -- Core comparison --</code></td>
+        <td>318–472</td>
+        <td><code>_find_peaks()</code>, <code>_compare()</code>, <code>_worker()</code></td>
+      </tr>
+      <tr>
+        <td><code># -- Output writers --</code></td>
+        <td>475–714</td>
+        <td><code>_load_freemix()</code>, <code>_apply_flags()</code>, <code>write_summary()</code>, <code>_get_plate_order()</code>, <code>write_matrix()</code>, <code>write_flagged_details()</code>, <code>write_plots()</code></td>
+      </tr>
+      <tr>
+        <td><code># -- Main --</code></td>
+        <td>717–1009</td>
+        <td><code>main()</code> — the entry point and four-phase orchestration</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout green">
+    <span class="tag">Navigation tip</span>
+    <p>In most text editors you can search for <code># --</code> to jump between sections. In VS Code, use Ctrl+Shift+O (outline view) or Ctrl+G (go to line) to jump to a specific function. The section banners also make <code>grep "# --" contamination_screen.py</code> a quick way to get a file outline from the terminal.</p>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<section id="naming">
+  <h2><span class="sec-num">06</span> Naming conventions</h2>
+
+  <p>The file follows consistent naming conventions. Once you know the rules, you can infer the role of any name at a glance.</p>
+
+  <table>
+    <thead>
+      <tr><th>Pattern</th><th>What it means</th><th>Examples</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>_name</code> (leading underscore)</td>
+        <td>Private — not intended to be called from outside the module</td>
+        <td><code>_run()</code>, <code>_compare()</code>, <code>_find_peaks()</code>, <code>_LOG2_RANGE</code></td>
+      </tr>
+      <tr>
+        <td><code>name</code> (no underscore, lowercase)</td>
+        <td>Public function — called by <code>main()</code> or external code</td>
+        <td><code>load_vcf()</code>, <code>filter_vcf()</code>, <code>write_summary()</code></td>
+      </tr>
+      <tr>
+        <td><code>NAME</code> (uppercase)</td>
+        <td>Module-level constant — value does not change</td>
+        <td><code>VCF_GLOB</code></td>
+      </tr>
+      <tr>
+        <td><code>df_*</code></td>
+        <td>pandas DataFrame variable</td>
+        <td><code>df_cache</code>, <code>df_a</code>, <code>df_b</code>, <code>summary_df</code></td>
+      </tr>
+      <tr>
+        <td><code>*_dir</code></td>
+        <td>A directory Path object</td>
+        <td><code>filtered_dir</code>, <code>detail_dir</code>, <code>plot_dir</code></td>
+      </tr>
+      <tr>
+        <td><code>name_a</code> / <code>name_b</code></td>
+        <td>Sample name strings for the two samples being compared</td>
+        <td>Used inside <code>_compare()</code> and <code>_worker()</code></td>
+      </tr>
+      <tr>
+        <td><code>*_thresh</code></td>
+        <td>A threshold value passed to a function</td>
+        <td><code>peak_count_thresh</code>, <code>n_shared_z_thresh</code></td>
+      </tr>
+      <tr>
+        <td><code>*_flag</code></td>
+        <td>A boolean pandas Series used in flagging</td>
+        <td><code>base_flag</code>, <code>freemix_flag</code></td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<section id="type-hints">
+  <h2><span class="sec-num">07</span> Type hints</h2>
+
+  <p>Every function has type hints on its parameters and return value. These are annotations — Python ignores them at runtime, but they tell you exactly what a function expects without having to read its body.</p>
+
+  <p>Here are the patterns you will see repeatedly:</p>
+
+  <div class="cb"><pre><span class="c"># A function that takes a Path and returns a string</span>
+<span class="k">def</span> <span class="f">get_sample_name</span>(vcf: <span class="t">Path</span>) -&gt; <span class="t">str</span>:
+
+<span class="c"># A function that can return a DataFrame OR None</span>
+<span class="k">def</span> <span class="f">_compare</span>(...) -&gt; <span class="t">Tuple</span>[<span class="t">dict</span>, <span class="t">Optional</span>[<span class="t">pd.DataFrame</span>]]:
+
+<span class="c"># A function that takes a dict mapping strings to DataFrames</span>
+<span class="k">def</span> <span class="f">_worker</span>(args_tuple: <span class="t">tuple</span>) -&gt; <span class="t">dict</span>:
+
+<span class="c"># A function that takes an optional Path (can be None)</span>
+<span class="k">def</span> <span class="f">_apply_flags</span>(..., freemix: <span class="t">Optional</span>[<span class="t">dict</span>] = <span class="k">None</span>, ...) -&gt; <span class="t">pd.DataFrame</span>:</pre></div>
+
+  <ul class="anno">
+    <li><div class="num">1</div><div class="txt"><strong><code>Optional[X]</code></strong> means the argument can be <code>X</code> or <code>None</code>. Wherever you see <code>Optional[dict]</code> or <code>Optional[pd.DataFrame]</code>, expect the code inside that function to check <code>if x is not None:</code> before using it.</div></li>
+    <li><div class="num">2</div><div class="txt"><strong><code>Tuple[A, B]</code></strong> means the function returns two values as a tuple. <code>_compare()</code> returns <code>Tuple[dict, Optional[pd.DataFrame]]</code> — a results dict always, plus a shared-variants DataFrame only when <code>include_shared_df=True</code>.</div></li>
+    <li><div class="num">3</div><div class="txt"><strong><code>Dict[str, pd.DataFrame]</code></strong> means a dictionary where keys are strings and values are DataFrames. This is the type of <code>df_cache</code> — sample name maps to its variant DataFrame.</div></li>
+    <li><div class="num">4</div><div class="txt"><strong><code>-&gt; None</code></strong> (explicit) or no return annotation means the function returns nothing useful — it works by side effects (writing files, modifying variables).</div></li>
+  </ul>
+
+  <div class="callout purple">
+    <span class="tag">Reading tip</span>
+    <p>When you encounter an unfamiliar function, read its signature first: the type hints tell you what it takes and what it gives back. You can often understand <em>what a function does</em> just from its name + signature + docstring, without reading the body. Only read the body when you need to understand <em>how</em> it does it.</p>
+  </div>
+</section>
+
+<section id="next">
+  <h2><span class="sec-num">Next</span> Continue to part 3</h2>
+  <p>Part 3 covers the key concepts you need to understand before the code makes sense: what a log2 ratio actually represents, how numpy histograms work, what a z-score is, how subprocess pipes can deadlock and how the code prevents it, and how <code>ThreadPoolExecutor</code> parallelises the pairwise comparisons.</p>
+  <div class="series-nav">
+    <a href="Contamination_Screen_Code_Explainer_1.html">&#8592; 1 · High-level outline</a>
+    <a href="Contamination_Screen_Code_Explainer_2.html" class="current">2 · Module structure</a>
+    <a href="Contamination_Screen_Code_Explainer_3.html">3 · Key concepts &#8594;</a>
+  </div>
+</section>
+
+</main>
+</div>
+
+<footer>
+  Contamination Screen Code Explainer — Part 2 of 5 · Joo Wook Ahn, 10 May 2026.
+</footer>
+</body>
+</html>

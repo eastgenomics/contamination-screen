@@ -1,0 +1,827 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Code Explainer 1 — High-Level Outline</title>
+<style>
+  :root{
+    --ink:#0d1b2a; --ink-soft:#354656; --muted:#6b7c8d;
+    --line:#e0e7ef; --line-strong:#c5d0db;
+    --bg:#f7f9fb; --paper:#ffffff;
+    --accent:#005eb8; --accent-deep:#003d78; --accent-mid:#1a73c4; --accent-soft:#e3edf8;
+    --green:#1a6e47; --green-soft:#e0f0e8;
+    --amber:#b35c00; --amber-soft:#fdf0e0;
+    --red:#9b2335; --red-soft:#fce8ea;
+    --purple:#4b2d8e; --purple-soft:#ede8f8;
+    --shadow:0 1px 3px rgba(13,27,42,.05),0 4px 20px rgba(13,27,42,.08);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{background:var(--bg);color:var(--ink);
+    font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;}
+  a{color:var(--accent-mid);text-decoration:none}
+  a:hover{text-decoration:underline}
+
+  .layout{display:grid;grid-template-columns:270px minmax(0,1fr);max-width:1320px;margin:0 auto}
+  @media(max-width:860px){.layout{grid-template-columns:1fr}.toc{display:none}}
+  main{padding:0 56px 96px;max-width:900px}
+  @media(max-width:860px){main{padding:0 24px 64px}}
+
+  h1{font-size:38px;line-height:1.1;letter-spacing:-.015em;font-weight:800;color:var(--ink);margin-bottom:14px;max-width:22ch}
+  h2{font-size:24px;font-weight:700;margin-bottom:16px;display:flex;align-items:center;gap:12px}
+  h2 .sec-num{font-size:12px;letter-spacing:.06em;text-transform:uppercase;background:var(--accent);color:#fff;padding:3px 9px;border-radius:999px;font-weight:700;white-space:nowrap}
+  h3{font-size:17px;font-weight:700;margin:28px 0 10px;color:var(--ink)}
+  h4{font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:20px 0 8px;font-weight:600}
+  p{margin-bottom:13px;color:var(--ink-soft)}
+  strong{color:var(--ink)}
+  ul,ol{margin:0 0 14px;padding-left:22px}
+  li{margin:5px 0;color:var(--ink-soft)}
+  code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;background:#f0f4f8;padding:2px 6px;border-radius:3px;color:var(--accent-deep)}
+
+  .toc{position:sticky;top:0;align-self:start;height:100vh;overflow-y:auto;padding:28px 24px;background:var(--paper);border-right:1px solid var(--line);font-size:13px}
+  .toc-brand{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--accent-deep);margin-bottom:20px;line-height:1.4}
+  .toc-section{font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin:18px 0 6px}
+  .toc ul{list-style:none}
+  .toc ul li a{display:block;padding:5px 0 5px 16px;color:var(--ink-soft);border-left:2px solid transparent;transition:all .15s;font-size:12.5px;line-height:1.4}
+  .toc ul li a:hover{color:var(--accent);border-left-color:var(--accent);text-decoration:none;padding-left:20px}
+  .toc .meta{margin-top:22px;padding-top:18px;border-top:1px solid var(--line);font-size:11.5px;color:var(--muted);line-height:1.6}
+
+  .hero{padding:52px 0 36px;border-bottom:1px solid var(--line);margin-bottom:8px}
+  .hero .eyebrow{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);font-weight:700;margin-bottom:12px}
+  .hero h1{font-size:38px;line-height:1.1;letter-spacing:-.015em;font-weight:800;color:var(--ink);margin-bottom:14px;max-width:22ch}
+  .hero .sub{font-size:17px;line-height:1.55;color:var(--ink-soft);max-width:64ch}
+  .hero .meta-row{display:flex;gap:24px;margin-top:20px;flex-wrap:wrap}
+  .hero .meta-item{font-size:12px;color:var(--muted)}
+  .hero .meta-item strong{color:var(--ink-soft)}
+
+  section{padding-top:52px}
+  section+section{border-top:1px solid var(--line)}
+
+  footer{padding:32px 56px;color:var(--muted);font-size:12px;border-top:1px solid var(--line);max-width:1320px;margin:0 auto;line-height:1.7}
+
+  .callout{border-radius:6px;padding:18px 22px;margin:18px 0;border:1px solid}
+  .callout.blue{border-color:#b3cce8;background:var(--accent-soft)}
+  .callout.green{border-color:#a8d4bb;background:var(--green-soft)}
+  .callout.amber{border-color:#e8c28a;background:var(--amber-soft)}
+  .callout.red{border-color:#e8a8a8;background:var(--red-soft)}
+  .callout.purple{border-color:#c5b8e8;background:var(--purple-soft)}
+  .callout .tag{display:block;font-size:11px;letter-spacing:.08em;text-transform:uppercase;font-weight:700;margin-bottom:6px}
+  .callout.blue .tag{color:var(--accent-deep)}
+  .callout.green .tag{color:var(--green)}
+  .callout.amber .tag{color:var(--amber)}
+  .callout.red .tag{color:var(--red)}
+  .callout.purple .tag{color:var(--purple)}
+  .callout p:last-child{margin:0}
+
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:22px 0}
+  @media(max-width:640px){.stats{grid-template-columns:repeat(2,1fr)}}
+  .stat{background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:16px;border-top:3px solid var(--accent)}
+  .stat .n{font-size:26px;font-weight:800;color:var(--accent-deep);line-height:1.1;font-variant-numeric:tabular-nums}
+  .stat .l{font-size:12px;color:var(--muted);margin-top:4px;line-height:1.4}
+
+  .card-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin:18px 0}
+  @media(max-width:640px){.card-grid{grid-template-columns:1fr}}
+  .card{background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:18px;box-shadow:var(--shadow)}
+  .card-head{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+  .card-icon{width:34px;height:34px;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:18px}
+  .card-name{font-weight:700;font-size:14.5px;color:var(--ink);line-height:1.2}
+  .card-sub{font-size:11.5px;color:var(--muted)}
+  .card p{font-size:13.5px;margin:0 0 10px}
+  .card p:last-child{margin:0}
+  .pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:600;letter-spacing:.04em}
+  .pill.green{background:var(--green-soft);color:var(--green)}
+  .pill.amber{background:var(--amber-soft);color:var(--amber)}
+  .pill.blue{background:var(--accent-soft);color:var(--accent-deep)}
+  .pill.purple{background:var(--purple-soft);color:var(--purple)}
+  .pill.red{background:var(--red-soft);color:var(--red)}
+
+  table{width:100%;border-collapse:collapse;margin:16px 0;font-size:14px}
+  th,td{text-align:left;padding:11px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{background:#f0f4f8;font-weight:600;font-size:12.5px;color:var(--ink);letter-spacing:.02em}
+  tr:hover td{background:#fafbfd}
+
+  /* Phase ribbon */
+  .phase-row{display:grid;grid-template-columns:repeat(4,1fr);gap:0;margin:22px 0;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .phase{padding:16px;border-right:1px solid var(--line);background:var(--paper)}
+  .phase:last-child{border-right:none}
+  .phase .ph-num{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
+  .phase .ph-name{font-weight:700;font-size:14px;color:var(--ink);margin-bottom:6px}
+  .phase .ph-fn{font-size:12px;color:var(--accent-mid);font-family:ui-monospace,Menlo,Consolas,monospace}
+  .phase.active{background:var(--accent-deep)}
+  .phase.active .ph-num{color:#a8c8e8}
+  .phase.active .ph-name{color:#fff}
+  .phase.active .ph-fn{color:#7bb8e8}
+
+  /* Function inventory table */
+  .fn-tag{display:inline-block;padding:1px 7px;border-radius:4px;font-size:11px;font-weight:600;font-family:ui-monospace,Menlo,Consolas,monospace;background:#f0f4f8;color:var(--accent-deep);border:1px solid var(--line)}
+
+  /* Series nav */
+  .series-nav{display:flex;gap:8px;flex-wrap:wrap;margin:18px 0}
+  .series-nav a{display:inline-block;padding:6px 14px;border-radius:6px;font-size:12.5px;font-weight:600;border:1px solid var(--line);background:var(--paper);color:var(--ink-soft)}
+  .series-nav a.current{background:var(--accent-deep);color:#fff;border-color:var(--accent-deep)}
+  .series-nav a:hover{border-color:var(--accent);color:var(--accent);text-decoration:none}
+</style>
+</head>
+<body>
+<div class="layout">
+
+<aside class="toc">
+  <div class="toc-brand">PERSONAL BRIEFING — CONTAMINATION SCREEN CODE<br>10 May 2026</div>
+
+  <div class="toc-section">This document</div>
+  <ul>
+    <li><a href="#what-is-it">What is this file?</a></li>
+    <li><a href="#series">Series overview</a></li>
+    <li><a href="#four-phases">The four phases</a></li>
+    <li><a href="#data-flow">Data flow</a></li>
+    <li><a href="#dependencies">External dependencies</a></li>
+    <li><a href="#function-inventory">Function inventory</a></li>
+  </ul>
+
+  <div class="meta">Part 1 of 5<br>contamination_screen.py<br>1,009 lines · v1.0</div>
+</aside>
+
+<main>
+
+<header class="hero">
+  <div class="eyebrow">Code explainer · Part 1 of 5 · High-level outline</div>
+  <h1>What does this file do?</h1>
+  <p class="sub">An orientation to contamination_screen.py before reading a single line of code: its purpose, its four phases, how data flows through it, and every function it contains.</p>
+  <div class="meta-row">
+    <span class="meta-item"><strong>Author</strong> Joo Wook Ahn</span>
+    <span class="meta-item"><strong>Date</strong> 10 May 2026</span>
+    <span class="meta-item"><strong>File</strong> contamination_screen.py (1,009 lines)</span>
+  </div>
+</header>
+
+<!-- series nav -->
+<div class="series-nav">
+  <a href="Contamination_Screen_Code_Explainer_1.html" class="current">1 · High-level outline</a>
+  <a href="Contamination_Screen_Code_Explainer_2.html">2 · Module structure</a>
+  <a href="Contamination_Screen_Code_Explainer_3.html">3 · Key concepts</a>
+  <a href="Contamination_Screen_Code_Explainer_4.html">4 · Function walkthrough</a>
+  <a href="Contamination_Screen_Code_Explainer_5.html">5 · Line-by-line reference</a>
+</div>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<section id="what-is-it">
+  <h2><span class="sec-num">01</span> What is this file?</h2>
+
+  <p><code>contamination_screen.py</code> is a self-contained command-line Python script. You run it once per sequencing run. It takes a folder of annotated VCF files — one per patient sample — and checks every possible pair of samples for cross-sample DNA contamination.</p>
+
+  <p>The core idea is simple: if a small amount of DNA from Patient A ended up in Patient B's library by mistake, then A's variants will show up in B's VCF at a consistently diluted allele frequency. The tool detects this by computing the ratio of allele frequencies between every pair of samples and looking for a statistical cluster at a non-unity ratio.</p>
+
+  <div class="stats">
+    <div class="stat">
+      <div class="n">1,009</div>
+      <div class="l">Lines of Python</div>
+    </div>
+    <div class="stat">
+      <div class="n">17</div>
+      <div class="l">Functions defined</div>
+    </div>
+    <div class="stat">
+      <div class="n">4</div>
+      <div class="l">External tools called (bcftools)</div>
+    </div>
+    <div class="stat">
+      <div class="n">3</div>
+      <div class="l">Third-party Python packages</div>
+    </div>
+  </div>
+
+  <div class="callout blue">
+    <span class="tag">Before you read the code</span>
+    <p>Read <strong>Contamination_Screen_Code_Review_Briefing.html</strong> first. It explains the algorithm visually — what a log2-ratio histogram is, why we use it, and what the peaks mean. Understanding the <em>what</em> and <em>why</em> makes the <em>how</em> (the code) much easier to follow.</p>
+  </div>
+
+  <h3>What it is not</h3>
+  <p>This tool does <strong>not</strong> call variants, align reads, or assess quality. It works entirely on pre-processed VCFs from the end of the Uranus clinical pipeline. It expects VCFs that have already been variant-called, soft-filtered, normalised with <code>bcftools norm -m -any</code>, and annotated by VEP. Think of it as a QC layer on top of an existing pipeline, not a replacement for any part of it.</p>
+</section>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<section id="series">
+  <h2><span class="sec-num">02</span> How to use this series</h2>
+
+  <p>These five documents are designed to be read in order. Each builds on the last. If you are already comfortable with Python and bioinformatics, you can skip ahead.</p>
+
+  <div class="card-grid">
+    <div class="card">
+      <div class="card-head">
+        <div class="card-icon" style="background:var(--accent-soft)">&#x2460;</div>
+        <div>
+          <div class="card-name">High-level outline</div>
+          <div class="card-sub">This document</div>
+        </div>
+      </div>
+      <p>What the file does, the four phases, how data moves through it, every function listed. Read this before opening the code.</p>
+      <span class="pill blue">Start here</span>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <div class="card-icon" style="background:var(--accent-soft)">&#x2461;</div>
+        <div>
+          <div class="card-name">Module structure</div>
+          <div class="card-sub">Imports, constants, naming conventions</div>
+        </div>
+      </div>
+      <p>Every import explained, every constant justified, the underscore naming convention, and how the file is laid out as sections.</p>
+      <span class="pill blue">5 min read</span>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <div class="card-icon" style="background:var(--green-soft)">&#x2462;</div>
+        <div>
+          <div class="card-name">Key concepts</div>
+          <div class="card-sub">Background knowledge</div>
+        </div>
+      </div>
+      <p>Log2 ratios, histograms in numpy, z-scores, subprocess pipes and deadlocks, ThreadPoolExecutor, pandas merges. The building blocks used throughout the code.</p>
+      <span class="pill green">Read if concepts are unfamiliar</span>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <div class="card-icon" style="background:var(--amber-soft)">&#x2463;</div>
+        <div>
+          <div class="card-name">Function walkthrough</div>
+          <div class="card-sub">Each function, purpose, and logic</div>
+        </div>
+      </div>
+      <p>Every function covered with its purpose, inputs, outputs, and key design decisions. Use alongside the code file.</p>
+      <span class="pill amber">Main reference</span>
+    </div>
+  </div>
+
+  <div class="card-grid">
+    <div class="card">
+      <div class="card-head">
+        <div class="card-icon" style="background:var(--red-soft)">&#x2464;</div>
+        <div>
+          <div class="card-name">Line-by-line reference</div>
+          <div class="card-sub">Dense annotations for hard sections</div>
+        </div>
+      </div>
+      <p>The four hardest functions annotated line by line: <code>filter_vcf</code>, <code>_find_peaks</code>, <code>_compare</code>, and <code>_apply_flags</code>. Keep this open alongside the code.</p>
+      <span class="pill red">Advanced</span>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <div class="card-icon" style="background:var(--purple-soft)">&#x1F4A1;</div>
+        <div>
+          <div class="card-name">Companion briefing</div>
+          <div class="card-sub">Algorithm overview</div>
+        </div>
+      </div>
+      <p>The visual algorithm briefing (<code>Contamination_Screen_Code_Review_Briefing.html</code>) explains what the code is trying to do before you look at how it does it.</p>
+      <span class="pill purple">Read first</span>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<section id="four-phases">
+  <h2><span class="sec-num">03</span> The four phases</h2>
+
+  <p>The <code>main()</code> function at the bottom of the file runs four phases in sequence. Every other function in the file exists to serve one of these phases. If you understand what each phase does, the rest of the code falls into place.</p>
+
+  <div class="phase-row">
+    <div class="phase">
+      <div class="ph-num">Phase 1</div>
+      <div class="ph-name">Pre-filter VCFs</div>
+      <div class="ph-fn">filter_vcf()</div>
+    </div>
+    <div class="phase">
+      <div class="ph-num">Phase 2</div>
+      <div class="ph-name">Load into memory</div>
+      <div class="ph-fn">load_vcf()</div>
+    </div>
+    <div class="phase active">
+      <div class="ph-num">Phase 3</div>
+      <div class="ph-name">Pairwise comparison</div>
+      <div class="ph-fn">_compare() · _find_peaks()</div>
+    </div>
+    <div class="phase">
+      <div class="ph-num">Phase 4</div>
+      <div class="ph-name">Flag and write outputs</div>
+      <div class="ph-fn">_apply_flags() · write_*()</div>
+    </div>
+  </div>
+
+  <h3>Phase 1 — Pre-filter VCFs</h3>
+  <p>Each input VCF is run through a four-stage <code>bcftools</code> pipeline that strips out low-quality variants and one specific population-frequency artefact. The output is a smaller, filtered VCF written to a <code>filtered/</code> subdirectory. These filtered VCFs are cached on disk — if you re-run the tool with the same settings, Phase 1 is skipped for any VCF already filtered.</p>
+  <p><strong>Why filter at all?</strong> The pairwise comparison in Phase 3 computes VAF ratios. If a variant has very low read depth, its VAF is noisy and the ratio is meaningless. Filtering ensures every variant that reaches Phase 3 has a reliably measured allele frequency.</p>
+
+  <h3>Phase 2 — Load into memory</h3>
+  <p>Each filtered VCF is queried with <code>bcftools query</code> to extract just the columns needed for comparison: chromosome, position, ref, alt, filter status, allele frequency, and gene name. These are loaded into pandas DataFrames — one per sample — and stored in a dictionary called <code>df_cache</code>. The rest of the file never touches VCF files directly; it only works with these DataFrames.</p>
+
+  <h3>Phase 3 — Pairwise comparison (the core algorithm)</h3>
+  <p>This is the most computationally intensive phase. For N samples, there are N×(N−1)/2 unique pairs. For a 30-sample run that is 435 pairs; for 96 samples it is 4,560. Each pair is processed by <code>_compare()</code>, which merges the two DataFrames on shared variant positions, computes log2(VAF_B / VAF_A) for each shared variant, and finds peaks in the resulting histogram using <code>_find_peaks()</code>.</p>
+  <p>Phase 3 uses a <code>ThreadPoolExecutor</code> to run comparisons in parallel across multiple CPU threads. The per-pair results are plain Python dictionaries that are collected into a list.</p>
+
+  <h3>Phase 4 — Flag and write outputs</h3>
+  <p>The list of raw comparison results is converted to a pandas DataFrame by <code>_apply_flags()</code>, which computes within-run z-scores and applies all three flagging thresholds. Output functions then write <code>summary.tsv</code>, <code>matrix.tsv</code>, per-pair detail TSVs, and optionally histogram plots for the top flagged pairs.</p>
+
+  <div class="callout green">
+    <span class="tag">The key insight</span>
+    <p>Phases 1 and 2 are preparation. Phase 4 is reporting. <strong>Phase 3 is where the science happens.</strong> When reviewing the code, spend most of your time understanding <code>_compare()</code> and <code>_find_peaks()</code>.</p>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<section id="data-flow">
+  <h2><span class="sec-num">04</span> Data flow</h2>
+
+  <p>The most important thing to understand about the code structure is <strong>what form the data takes at each stage</strong>. The same variant information is represented four different ways as it moves through the pipeline:</p>
+
+  <figure>
+  <div class="fig-wrap">
+  <svg viewBox="0 0 820 230" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Data transformation flow showing how variant data changes form across the four phases">
+    <style>.dt{font:bold 12px -apple-system,sans-serif}.ds{font:11px -apple-system,sans-serif}.dl{font:10px -apple-system,sans-serif;letter-spacing:1}</style>
+    <defs><marker id="da" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="#005eb8"/></marker></defs>
+    <text x="20" y="16" class="dl" fill="#6b7c8d">DATA TRANSFORMATION FLOW</text>
+    <!-- Row 1: disk forms -->
+    <rect x="20" y="30" width="110" height="55" rx="6" fill="#ede8f8" stroke="#4b2d8e" stroke-width="1.5"/>
+    <text x="75" y="53" text-anchor="middle" class="dt" fill="#4b2d8e">Raw VCF</text>
+    <text x="75" y="68" text-anchor="middle" class="ds" fill="#6b7c8d">.vcf.gz + .tbi</text>
+    <text x="75" y="100" text-anchor="middle" class="ds" fill="#6b7c8d">Disk</text>
+    <line x1="130" y1="57" x2="165" y2="57" stroke="#005eb8" stroke-width="1.5" marker-end="url(#da)"/>
+    <text x="147" y="50" text-anchor="middle" class="ds" fill="#005eb8">filter_vcf()</text>
+    <!-- Filtered VCF -->
+    <rect x="168" y="30" width="120" height="55" rx="6" fill="#e3edf8" stroke="#005eb8" stroke-width="1.5"/>
+    <text x="228" y="53" text-anchor="middle" class="dt" fill="#003d78">Filtered VCF</text>
+    <text x="228" y="68" text-anchor="middle" class="ds" fill="#6b7c8d">results/filtered/</text>
+    <text x="228" y="100" text-anchor="middle" class="ds" fill="#6b7c8d">Disk (cached)</text>
+    <line x1="288" y1="57" x2="323" y2="57" stroke="#005eb8" stroke-width="1.5" marker-end="url(#da)"/>
+    <text x="305" y="50" text-anchor="middle" class="ds" fill="#005eb8">load_vcf()</text>
+    <!-- DataFrame -->
+    <rect x="326" y="30" width="120" height="55" rx="6" fill="#e0f0e8" stroke="#1a6e47" stroke-width="1.5"/>
+    <text x="386" y="53" text-anchor="middle" class="dt" fill="#1a6e47">DataFrame</text>
+    <text x="386" y="68" text-anchor="middle" class="ds" fill="#6b7c8d">df_cache[name]</text>
+    <text x="386" y="100" text-anchor="middle" class="ds" fill="#6b7c8d">RAM</text>
+    <line x1="446" y1="57" x2="481" y2="57" stroke="#005eb8" stroke-width="1.5" marker-end="url(#da)"/>
+    <text x="463" y="50" text-anchor="middle" class="ds" fill="#005eb8">_compare()</text>
+    <!-- Results dict -->
+    <rect x="484" y="30" width="120" height="55" rx="6" fill="#e3edf8" stroke="#005eb8" stroke-width="1.5"/>
+    <text x="544" y="53" text-anchor="middle" class="dt" fill="#003d78">Results list</text>
+    <text x="544" y="68" text-anchor="middle" class="ds" fill="#6b7c8d">raw_results</text>
+    <text x="544" y="100" text-anchor="middle" class="ds" fill="#6b7c8d">RAM (list of dicts)</text>
+    <line x1="604" y1="57" x2="639" y2="57" stroke="#005eb8" stroke-width="1.5" marker-end="url(#da)"/>
+    <text x="621" y="50" text-anchor="middle" class="ds" fill="#005eb8">_apply_flags()</text>
+    <!-- Summary DF -->
+    <rect x="642" y="30" width="120" height="55" rx="6" fill="#e3edf8" stroke="#005eb8" stroke-width="1.5"/>
+    <text x="702" y="53" text-anchor="middle" class="dt" fill="#003d78">Summary DF</text>
+    <text x="702" y="68" text-anchor="middle" class="ds" fill="#6b7c8d">summary_df</text>
+    <text x="702" y="100" text-anchor="middle" class="ds" fill="#6b7c8d">RAM</text>
+    <!-- Phase labels row -->
+    <rect x="20" y="115" width="110" height="24" rx="4" fill="#ede8f8"/>
+    <text x="75" y="131" text-anchor="middle" class="ds" fill="#4b2d8e">Input</text>
+    <rect x="168" y="115" width="120" height="24" rx="4" fill="#fdf0e0"/>
+    <text x="228" y="131" text-anchor="middle" class="ds" fill="#b35c00">Phase 1 output</text>
+    <rect x="326" y="115" width="120" height="24" rx="4" fill="#e0f0e8"/>
+    <text x="386" y="131" text-anchor="middle" class="ds" fill="#1a6e47">Phase 2 output</text>
+    <rect x="484" y="115" width="120" height="24" rx="4" fill="#e3edf8"/>
+    <text x="544" y="131" text-anchor="middle" class="ds" fill="#003d78">Phase 3 output</text>
+    <rect x="642" y="115" width="120" height="24" rx="4" fill="#e3edf8"/>
+    <text x="702" y="131" text-anchor="middle" class="ds" fill="#003d78">Phase 4 input</text>
+    <!-- Write arrow -->
+    <line x1="702" y1="85" x2="702" y2="155" stroke="#005eb8" stroke-width="1.5" marker-end="url(#da)"/>
+    <text x="712" y="125" class="ds" fill="#005eb8">write_summary()</text>
+    <rect x="642" y="158" width="120" height="40" rx="6" fill="#e0f0e8" stroke="#1a6e47" stroke-width="1.5"/>
+    <text x="702" y="180" text-anchor="middle" class="dt" fill="#1a6e47">summary.tsv</text>
+    <text x="702" y="193" text-anchor="middle" class="ds" fill="#6b7c8d">Disk (final output)</text>
+  </svg>
+  </div>
+  <figcaption>Figure A &#183; Data transformation flow. Data changes form five times on its journey from raw VCF to TSV output. The key transition is Phase 2: once loaded into pandas DataFrames (RAM), the code never reads VCF files again.</figcaption>
+  </figure>
+
+  <table>
+    <thead>
+      <tr><th>Stage</th><th>Data form</th><th>Where stored</th><th>Key variable</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Raw input</td>
+        <td>VCF file on disk (<code>.vcf.gz</code> + <code>.tbi</code>)</td>
+        <td>Disk — original VCF directory</td>
+        <td><code>vcf_files</code> (list of Paths)</td>
+      </tr>
+      <tr>
+        <td>After Phase 1</td>
+        <td>Filtered VCF file on disk</td>
+        <td>Disk — <code>results/filtered/</code></td>
+        <td><code>filtered_vcfs</code> (dict: name → Path)</td>
+      </tr>
+      <tr>
+        <td>After Phase 2</td>
+        <td>pandas DataFrame — one row per variant</td>
+        <td>RAM</td>
+        <td><code>df_cache</code> (dict: name → DataFrame)</td>
+      </tr>
+      <tr>
+        <td>During Phase 3</td>
+        <td>Merged DataFrame of shared variants + log2 ratios</td>
+        <td>RAM (temporary, per pair)</td>
+        <td><code>merged</code> (inside <code>_compare()</code>)</td>
+      </tr>
+      <tr>
+        <td>After Phase 3</td>
+        <td>List of plain Python dicts — one per pair</td>
+        <td>RAM</td>
+        <td><code>raw_results</code></td>
+      </tr>
+      <tr>
+        <td>After Phase 4</td>
+        <td>pandas DataFrame — one row per pair, with flags</td>
+        <td>RAM + written to <code>summary.tsv</code></td>
+        <td><code>summary_df</code></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout amber">
+    <span class="tag">Why not keep everything as DataFrames?</span>
+    <p>Phase 3 runs in parallel threads. Python's pandas DataFrames cannot be safely modified by multiple threads at the same time. Each thread is given read-only access to <code>df_cache</code> and returns a simple Python dict — which is thread-safe to collect into a list. The list is converted to a DataFrame only once, in Phase 4, in the main thread.</p>
+  </div>
+
+  <h3>The sample name as the key</h3>
+  <p>Throughout the code, samples are identified by their <strong>sample name</strong> — the column header from the VCF <code>#CHROM</code> line (the last field). This name is extracted once by <code>get_sample_name()</code> and used as the dictionary key in <code>df_cache</code> and <code>filtered_vcfs</code>, and as the value in <code>sample_names</code> (a list used to preserve order). Whenever you see <code>name_a</code> or <code>name_b</code> in the code, it refers to this sample name string.</p>
+</section>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<section id="dependencies">
+  <h2><span class="sec-num">05</span> External dependencies</h2>
+
+  <p>The tool has two kinds of dependencies: <strong>Python packages</strong> and <strong>external programs</strong> called via subprocess.</p>
+
+  <h3>Python packages</h3>
+
+  <table>
+    <thead>
+      <tr><th>Package</th><th>Used for</th><th>Required?</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>numpy</code></td>
+        <td>The histogram computation in <code>_find_peaks()</code> — <code>np.histogram()</code>, <code>np.argmax()</code>, array masking</td>
+        <td>Yes</td>
+      </tr>
+      <tr>
+        <td><code>pandas</code></td>
+        <td>Storing variants as DataFrames, merging two samples' variants on shared positions, writing TSV output</td>
+        <td>Yes</td>
+      </tr>
+      <tr>
+        <td><code>matplotlib</code></td>
+        <td>Drawing histogram PNG plots for flagged pairs (only when <code>--plots</code> is passed)</td>
+        <td>Optional</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>External programs (called via subprocess)</h3>
+
+  <table>
+    <thead>
+      <tr><th>Program</th><th>Commands used</th><th>Purpose</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>bcftools view</code></td>
+        <td>Phase 1 filter pipeline</td>
+        <td>Restricts to PASS variants and applies gnomAD AF filter</td>
+      </tr>
+      <tr>
+        <td><code>bcftools filter</code></td>
+        <td>Phase 1 filter pipeline</td>
+        <td>Removes variants with DP &lt; 99 or AF &lt; 0.03</td>
+      </tr>
+      <tr>
+        <td><code>bcftools +split-vep</code></td>
+        <td>Phase 1 filter pipeline</td>
+        <td>Extracts gnomAD AF and gene symbol from the VEP CSQ field into typed INFO tags</td>
+      </tr>
+      <tr>
+        <td><code>bcftools query</code></td>
+        <td>Phase 2 loading</td>
+        <td>Extracts variant fields as plain text for loading into pandas</td>
+      </tr>
+      <tr>
+        <td><code>bcftools index -t</code></td>
+        <td>After Phase 1</td>
+        <td>Creates a tabix index (<code>.tbi</code>) for the filtered VCF</td>
+      </tr>
+      <tr>
+        <td><code>bcftools +split-vep -l</code></td>
+        <td>Before Phase 1</td>
+        <td>Lists the fields in the CSQ format string so the code knows which gnomAD fields exist</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="callout blue">
+    <span class="tag">bcftools version requirement</span>
+    <p>The <code>+split-vep</code> plugin is required — it is bundled with bcftools 1.14+. If you see an error like <em>"split-vep: command not found"</em>, your bcftools installation is either too old or was compiled without plugins. Check with <code>bcftools --version</code> and <code>bcftools plugin --list</code>.</p>
+  </div>
+
+  <h3>Standard library modules</h3>
+  <p>The code also uses several Python standard library modules — these come with Python and require no installation:</p>
+
+  <table>
+    <thead>
+      <tr><th>Module</th><th>Used for</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>argparse</code></td><td>Command-line argument parsing</td></tr>
+      <tr><td><code>logging</code></td><td>Timestamped progress messages to the terminal</td></tr>
+      <tr><td><code>math</code></td><td><code>math.isnan()</code> — checking for NaN values</td></tr>
+      <tr><td><code>os</code></td><td><code>os.cpu_count()</code> — detecting available CPUs for threading</td></tr>
+      <tr><td><code>re</code></td><td>Regular expressions — sanitising sample names for filenames</td></tr>
+      <tr><td><code>subprocess</code></td><td>Running bcftools commands from Python</td></tr>
+      <tr><td><code>sys</code></td><td><code>sys.exit(1)</code> — exiting with an error code</td></tr>
+      <tr><td><code>threading</code></td><td>Background threads to drain stderr from subprocesses</td></tr>
+      <tr><td><code>concurrent.futures</code></td><td><code>ThreadPoolExecutor</code> — running pairwise comparisons in parallel</td></tr>
+      <tr><td><code>itertools</code></td><td><code>combinations()</code> — generating all unique pairs from the sample list</td></tr>
+      <tr><td><code>pathlib</code></td><td><code>Path</code> objects for safe, cross-platform file path handling</td></tr>
+      <tr><td><code>typing</code></td><td>Type hints: <code>Dict</code>, <code>List</code>, <code>Optional</code>, <code>Tuple</code></td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<section id="function-inventory">
+  <h2><span class="sec-num">06</span> Function inventory</h2>
+
+  <p>There are 17 functions in the file. This table is the complete map. Use it to quickly find where a function lives and what phase it belongs to.</p>
+
+  <div class="callout blue">
+    <span class="tag">Naming convention</span>
+    <p>Functions starting with an underscore (<code>_find_peaks</code>, <code>_compare</code>, <code>_run</code>, etc.) are <strong>internal helpers</strong> — they are not meant to be called from outside the module. Functions without an underscore (<code>load_vcf</code>, <code>write_summary</code>, <code>main</code>, etc.) are the public-facing functions that <code>main()</code> calls directly.</p>
+  </div>
+
+  <table>
+    <thead>
+      <tr><th>Function</th><th>Lines</th><th>Phase</th><th>One-line purpose</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="fn-tag">parse_args()</span></td>
+        <td>~54–120</td>
+        <td><span class="pill blue">Setup</span></td>
+        <td>Defines and parses all command-line arguments; returns an <code>argparse.Namespace</code></td>
+      </tr>
+      <tr>
+        <td><span class="fn-tag">_run()</span></td>
+        <td>~127–131</td>
+        <td><span class="pill blue">Setup</span></td>
+        <td>Tiny wrapper around <code>subprocess.run()</code> that logs the command at DEBUG level</td>
+      </tr>
+      <tr>
+        <td><span class="fn-tag">get_sample_name()</span></td>
+        <td>~133–148</td>
+        <td><span class="pill blue">Setup</span></td>
+        <td>Reads the <code>#CHROM</code> header line of a VCF and returns the sample column name (column 10)</td>
+      </tr>
+      <tr>
+        <td><span class="fn-tag">_drain_stderr()</span></td>
+        <td>~151–153</td>
+        <td><span class="pill amber">Phase 1</span></td>
+        <td>Reads all stderr output from a subprocess into a list — prevents deadlocks in piped subprocesses</td>
+      </tr>
+      <tr>
+        <td><span class="fn-tag">_csq_gnomad_fields()</span></td>
+        <td>~156–166</td>
+        <td><span class="pill amber">Phase 1</span></td>
+        <td>Runs <code>bcftools +split-vep --list</code> on a VCF and returns which gnomAD AF fields are present</td>
+      </tr>
+      <tr>
+        <td><span class="fn-tag">filter_vcf()</span></td>
+        <td>~169–254</td>
+        <td><span class="pill amber">Phase 1</span></td>
+        <td>Runs the four-stage bcftools pipeline on a single VCF; writes a filtered, indexed output file</td>
+      </tr>
+      <tr>
+        <td><span class="fn-tag">load_vcf()</span></td>
+        <td>~258–315</td>
+        <td><span class="pill green">Phase 2</span></td>
+        <td>Queries a filtered VCF with <code>bcftools query</code> and returns a pandas DataFrame of variants</td>
+      </tr>
+      <tr>
+        <td><span class="fn-tag">_find_peaks()</span></td>
+        <td>~319–370</td>
+        <td><span class="pill purple">Phase 3</span></td>
+        <td>Builds a log2-ratio histogram from an array of values and identifies the overall and non-unity peaks</td>
+      </tr>
+      <tr>
+        <td><span class="fn-tag">_compare()</span></td>
+        <td>~373–465</td>
+        <td><span class="pill purple">Phase 3</span></td>
+        <td>Core pairwise comparison: merges two DataFrames, computes log2 ratios, calls <code>_find_peaks()</code>, assigns directionality</td>
+      </tr>
+      <tr>
+        <td><span class="fn-tag">_worker()</span></td>
+        <td>~468–472</td>
+        <td><span class="pill purple">Phase 3</span></td>
+        <td>Thin wrapper around <code>_compare()</code> that unpacks a tuple — used as the thread pool target</td>
+      </tr>
+      <tr>
+        <td><span class="fn-tag">_load_freemix()</span></td>
+        <td>~477–494</td>
+        <td><span class="pill red">Phase 4</span></td>
+        <td>Reads a MultiQC VerifyBamID file and returns a dict mapping sample name to FREEMIX fraction</td>
+      </tr>
+      <tr>
+        <td><span class="fn-tag">_apply_flags()</span></td>
+        <td>~497–539</td>
+        <td><span class="pill red">Phase 4</span></td>
+        <td>Converts raw results to a DataFrame, computes within-run z-scores, applies all flagging conditions</td>
+      </tr>
+      <tr>
+        <td><span class="fn-tag">write_summary()</span></td>
+        <td>~542–547</td>
+        <td><span class="pill red">Phase 4</span></td>
+        <td>Writes <code>summary.tsv</code> — the main output, one row per pair</td>
+      </tr>
+      <tr>
+        <td><span class="fn-tag">_get_plate_order()</span></td>
+        <td>~550–590</td>
+        <td><span class="pill red">Phase 4</span></td>
+        <td>Parses a MultiQC general stats file to return sample names sorted by plate well position</td>
+      </tr>
+      <tr>
+        <td><span class="fn-tag">write_matrix()</span></td>
+        <td>~593–609</td>
+        <td><span class="pill red">Phase 4</span></td>
+        <td>Writes <code>matrix.tsv</code> — an N×N directional contamination grid with peak_count as values</td>
+      </tr>
+      <tr>
+        <td><span class="fn-tag">write_flagged_details()</span></td>
+        <td>~612–638</td>
+        <td><span class="pill red">Phase 4</span></td>
+        <td>Writes per-variant detail TSVs for the top flagged pairs — shows each shared variant and its ratio</td>
+      </tr>
+      <tr>
+        <td><span class="fn-tag">write_plots()</span></td>
+        <td>~641–714</td>
+        <td><span class="pill red">Phase 4</span></td>
+        <td>Generates matplotlib histogram PNGs for flagged pairs (only when <code>--plots</code> is passed)</td>
+      </tr>
+      <tr>
+        <td><span class="fn-tag">main()</span></td>
+        <td>~718–1009</td>
+        <td><span class="pill blue">Orchestration</span></td>
+        <td>Entry point — parses args, sets up logging, and runs the four phases in sequence</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>How the functions call each other</h3>
+  <p>The call graph is shallow — most functions are called only by <code>main()</code> or by one other function. Here are the only multi-level chains:</p>
+
+  <table>
+    <thead>
+      <tr><th>Caller</th><th>Calls</th><th>Notes</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><code>main()</code></td>
+        <td><code>filter_vcf()</code></td>
+        <td>Once per VCF in a loop</td>
+      </tr>
+      <tr>
+        <td><code>filter_vcf()</code></td>
+        <td><code>_csq_gnomad_fields()</code>, <code>_drain_stderr()</code>, <code>_run()</code></td>
+        <td>Helpers for the bcftools pipeline</td>
+      </tr>
+      <tr>
+        <td><code>main()</code></td>
+        <td><code>_worker()</code> via <code>ThreadPoolExecutor</code></td>
+        <td>Once per pair, in parallel</td>
+      </tr>
+      <tr>
+        <td><code>_worker()</code></td>
+        <td><code>_compare()</code></td>
+        <td>Thin unpacking wrapper</td>
+      </tr>
+      <tr>
+        <td><code>_compare()</code></td>
+        <td><code>_find_peaks()</code></td>
+        <td>Called once per pair with the log2 ratio array</td>
+      </tr>
+      <tr>
+        <td><code>main()</code></td>
+        <td><code>_compare()</code> again (directly)</td>
+        <td>Second call for flagged pairs only, this time with <code>include_shared_df=True</code> to get the per-variant DataFrame for detail output</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <figure>
+  <div class="fig-wrap">
+  <svg viewBox="0 0 820 280" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Function call graph showing which functions call which other functions">
+    <style>.fc{font:bold 12px ui-monospace,Menlo,monospace}.fs{font:10px -apple-system,sans-serif}.fl{font:10px -apple-system,sans-serif;letter-spacing:1}</style>
+    <defs><marker id="fa" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto"><path d="M0,0 L7,2.5 L0,5" fill="#6b7c8d"/></marker></defs>
+    <text x="20" y="16" class="fl" fill="#6b7c8d">FUNCTION CALL GRAPH</text>
+    <!-- main() at top centre -->
+    <rect x="330" y="28" width="160" height="36" rx="6" fill="#003d78"/>
+    <text x="410" y="51" text-anchor="middle" class="fc" fill="#ffffff">main()</text>
+    <!-- Level 1 callees -->
+    <rect x="20" y="110" width="130" height="34" rx="5" fill="#e3edf8" stroke="#005eb8" stroke-width="1"/>
+    <text x="85" y="131" text-anchor="middle" class="fc" fill="#003d78">filter_vcf()</text>
+    <rect x="165" y="110" width="110" height="34" rx="5" fill="#e3edf8" stroke="#005eb8" stroke-width="1"/>
+    <text x="220" y="131" text-anchor="middle" class="fc" fill="#003d78">load_vcf()</text>
+    <rect x="290" y="110" width="110" height="34" rx="5" fill="#e3edf8" stroke="#005eb8" stroke-width="1"/>
+    <text x="345" y="131" text-anchor="middle" class="fc" fill="#003d78">_worker()</text>
+    <rect x="415" y="110" width="130" height="34" rx="5" fill="#e3edf8" stroke="#005eb8" stroke-width="1"/>
+    <text x="480" y="131" text-anchor="middle" class="fc" fill="#003d78">_apply_flags()</text>
+    <rect x="560" y="110" width="110" height="34" rx="5" fill="#e3edf8" stroke="#005eb8" stroke-width="1"/>
+    <text x="615" y="122" text-anchor="middle" class="fc" fill="#003d78">write_*()</text>
+    <text x="615" y="136" text-anchor="middle" class="fs" fill="#6b7c8d">4 functions</text>
+    <rect x="685" y="110" width="115" height="34" rx="5" fill="#ede8f8" stroke="#4b2d8e" stroke-width="1"/>
+    <text x="742" y="122" text-anchor="middle" class="fc" fill="#4b2d8e">_compare()</text>
+    <text x="742" y="136" text-anchor="middle" class="fs" fill="#6b7c8d">direct (phase 4)</text>
+    <!-- Lines from main() -->
+    <line x1="380" y1="64" x2="85" y2="110" stroke="#6b7c8d" stroke-width="1" marker-end="url(#fa)"/>
+    <line x1="390" y1="64" x2="220" y2="110" stroke="#6b7c8d" stroke-width="1" marker-end="url(#fa)"/>
+    <line x1="400" y1="64" x2="345" y2="110" stroke="#6b7c8d" stroke-width="1" marker-end="url(#fa)"/>
+    <line x1="420" y1="64" x2="480" y2="110" stroke="#6b7c8d" stroke-width="1" marker-end="url(#fa)"/>
+    <line x1="440" y1="64" x2="615" y2="110" stroke="#6b7c8d" stroke-width="1" marker-end="url(#fa)"/>
+    <line x1="450" y1="64" x2="742" y2="110" stroke="#6b7c8d" stroke-width="1" marker-end="url(#fa)"/>
+    <!-- Level 2: filter_vcf children -->
+    <rect x="10" y="198" width="85" height="30" rx="4" fill="#f0f4f8" stroke="#c5d0db"/>
+    <text x="52" y="218" text-anchor="middle" font-size="11" font-family="ui-monospace,monospace" fill="#354656">_run()</text>
+    <rect x="105" y="198" width="120" height="30" rx="4" fill="#f0f4f8" stroke="#c5d0db"/>
+    <text x="165" y="218" text-anchor="middle" font-size="11" font-family="ui-monospace,monospace" fill="#354656">_csq_gnomad_fields()</text>
+    <!-- Level 2: _worker child -->
+    <rect x="260" y="198" width="110" height="30" rx="4" fill="#e3edf8" stroke="#005eb8" stroke-width="1"/>
+    <text x="315" y="218" text-anchor="middle" font-size="11" font-family="ui-monospace,monospace" fill="#003d78">_compare()</text>
+    <!-- Level 3: _compare child -->
+    <rect x="250" y="258" width="120" height="28" rx="4" fill="#e0f0e8" stroke="#1a6e47" stroke-width="1"/>
+    <text x="310" y="276" text-anchor="middle" font-size="11" font-family="ui-monospace,monospace" fill="#1a6e47">_find_peaks()</text>
+    <!-- Lines level 2 -->
+    <line x1="85" y1="144" x2="52" y2="198" stroke="#6b7c8d" stroke-width="1" marker-end="url(#fa)"/>
+    <line x1="85" y1="144" x2="165" y2="198" stroke="#6b7c8d" stroke-width="1" marker-end="url(#fa)"/>
+    <line x1="345" y1="144" x2="315" y2="198" stroke="#6b7c8d" stroke-width="1" marker-end="url(#fa)"/>
+    <line x1="315" y1="228" x2="310" y2="258" stroke="#6b7c8d" stroke-width="1" marker-end="url(#fa)"/>
+    <!-- _drain_stderr under filter_vcf -->
+    <rect x="237" y="198" width="110" height="30" rx="4" fill="#f0f4f8" stroke="#c5d0db"/>
+    <text x="292" y="218" text-anchor="middle" font-size="10" font-family="ui-monospace,monospace" fill="#354656">_drain_stderr()</text>
+    <line x1="85" y1="144" x2="292" y2="198" stroke="#6b7c8d" stroke-width="1" marker-end="url(#fa)"/>
+    <!-- ThreadPoolExecutor note -->
+    <rect x="350" y="162" width="150" height="22" rx="4" fill="#fdf0e0" stroke="#e8c28a"/>
+    <text x="425" y="177" text-anchor="middle" font-size="10" fill="#b35c00">via ThreadPoolExecutor</text>
+    <line x1="370" y1="144" x2="400" y2="162" stroke="#b35c00" stroke-width="1" stroke-dasharray="3 2"/>
+  </svg>
+  </div>
+  <figcaption>Figure B &#183; Function call graph. main() calls most functions directly. The only multi-level chain is main &#8594; _worker &#8594; _compare &#8594; _find_peaks. Note _compare() is also called directly by main() in Phase 4 for the detail output pass.</figcaption>
+  </figure>
+
+  <div class="callout amber">
+    <span class="tag">Why is _compare() called twice?</span>
+    <p>Phase 3 runs all pairs in parallel with threads and discards the per-variant DataFrames to save memory. Only after flagging are the top flagged pairs re-run with <code>include_shared_df=True</code> to retrieve the variant-level detail needed for TSVs and plots. Doing it this way avoids holding ~N²/2 DataFrames in RAM for an entire run.</p>
+  </div>
+
+  <h3>Functions you can ignore on first reading</h3>
+  <p>If you are new to the codebase, these functions are straightforward and do not need deep study:</p>
+  <ul>
+    <li><code>_run()</code> — just <code>subprocess.run()</code> with one extra log line</li>
+    <li><code>write_summary()</code> — literally one line: <code>df.to_csv()</code></li>
+    <li><code>write_matrix()</code> — fills a numpy matrix and writes it as a DataFrame</li>
+    <li><code>_load_freemix()</code> — reads a TSV and returns a dict</li>
+    <li><code>_worker()</code> — four lines including the docstring</li>
+    <li><code>write_plots()</code> — matplotlib boilerplate; only relevant if you care about plot output</li>
+  </ul>
+
+  <h3>Functions that deserve careful study</h3>
+  <ul>
+    <li><code>filter_vcf()</code> — piped subprocesses with deadlock prevention; the bcftools pipeline design</li>
+    <li><code>_find_peaks()</code> — the numpy histogram logic; understanding "overall" vs "non-unity" peak</li>
+    <li><code>_compare()</code> — the core algorithm; DataFrame merge, ratio calculation, directionality</li>
+    <li><code>_apply_flags()</code> — the z-score calculation and compound flagging condition</li>
+    <li><code>main()</code> — the Phase 1 cache invalidation logic; how <code>ThreadPoolExecutor</code> is set up</li>
+  </ul>
+</section>
+
+<!-- series nav footer -->
+<section id="next">
+  <h2><span class="sec-num">Next</span> Continue to part 2</h2>
+  <p>Part 2 covers the top of the file in detail: what each import is actually used for, what the constants mean and why they have the values they do, and how the file's section layout helps you navigate 1,009 lines without getting lost.</p>
+  <div class="series-nav">
+    <a href="Contamination_Screen_Code_Explainer_1.html" class="current">1 · High-level outline</a>
+    <a href="Contamination_Screen_Code_Explainer_2.html">2 · Module structure &#8594;</a>
+  </div>
+</section>
+
+</main>
+</div>
+
+<footer>
+  Contamination Screen Code Explainer — Part 1 of 5 · Joo Wook Ahn, 10 May 2026. Companion to contamination_screen.py v1.0 and Contamination_Screen_Code_Review_Briefing.html.
+</footer>
+</body>
+</html>

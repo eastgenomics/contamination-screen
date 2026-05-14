@@ -1,0 +1,579 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Code Explainer 3 — Key Concepts</title>
+<style>
+  :root{
+    --ink:#0d1b2a; --ink-soft:#354656; --muted:#6b7c8d;
+    --line:#e0e7ef; --line-strong:#c5d0db;
+    --bg:#f7f9fb; --paper:#ffffff;
+    --accent:#005eb8; --accent-deep:#003d78; --accent-mid:#1a73c4; --accent-soft:#e3edf8;
+    --green:#1a6e47; --green-soft:#e0f0e8;
+    --amber:#b35c00; --amber-soft:#fdf0e0;
+    --red:#9b2335; --red-soft:#fce8ea;
+    --purple:#4b2d8e; --purple-soft:#ede8f8;
+    --shadow:0 1px 3px rgba(13,27,42,.05),0 4px 20px rgba(13,27,42,.08);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{background:var(--bg);color:var(--ink);
+    font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;}
+  a{color:var(--accent-mid);text-decoration:none}
+  a:hover{text-decoration:underline}
+  .layout{display:grid;grid-template-columns:270px minmax(0,1fr);max-width:1320px;margin:0 auto}
+  @media(max-width:860px){.layout{grid-template-columns:1fr}.toc{display:none}}
+  main{padding:0 56px 96px;max-width:900px}
+  h1{font-size:38px;line-height:1.1;letter-spacing:-.015em;font-weight:800;color:var(--ink);margin-bottom:14px;max-width:22ch}
+  h2{font-size:24px;font-weight:700;margin-bottom:16px;display:flex;align-items:center;gap:12px}
+  h2 .sec-num{font-size:12px;letter-spacing:.06em;text-transform:uppercase;background:var(--accent);color:#fff;padding:3px 9px;border-radius:999px;font-weight:700;white-space:nowrap}
+  h3{font-size:17px;font-weight:700;margin:28px 0 10px;color:var(--ink)}
+  h4{font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:20px 0 8px;font-weight:600}
+  p{margin-bottom:13px;color:var(--ink-soft)}
+  strong{color:var(--ink)}
+  ul,ol{margin:0 0 14px;padding-left:22px}
+  li{margin:5px 0;color:var(--ink-soft)}
+  code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;background:#f0f4f8;padding:2px 6px;border-radius:3px;color:var(--accent-deep)}
+  .toc{position:sticky;top:0;align-self:start;height:100vh;overflow-y:auto;padding:28px 24px;background:var(--paper);border-right:1px solid var(--line);font-size:13px}
+  .toc-brand{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--accent-deep);margin-bottom:20px;line-height:1.4}
+  .toc-section{font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin:18px 0 6px}
+  .toc ul{list-style:none}
+  .toc ul li a{display:block;padding:5px 0 5px 16px;color:var(--ink-soft);border-left:2px solid transparent;transition:all .15s;font-size:12.5px;line-height:1.4}
+  .toc ul li a:hover{color:var(--accent);border-left-color:var(--accent);text-decoration:none;padding-left:20px}
+  .toc .meta{margin-top:22px;padding-top:18px;border-top:1px solid var(--line);font-size:11.5px;color:var(--muted);line-height:1.6}
+  .hero{padding:52px 0 36px;border-bottom:1px solid var(--line);margin-bottom:8px}
+  .hero .eyebrow{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);font-weight:700;margin-bottom:12px}
+  .hero h1{font-size:38px;line-height:1.1;letter-spacing:-.015em;font-weight:800;color:var(--ink);margin-bottom:14px;max-width:22ch}
+  .hero .sub{font-size:17px;line-height:1.55;color:var(--ink-soft);max-width:64ch}
+  .hero .meta-row{display:flex;gap:24px;margin-top:20px;flex-wrap:wrap}
+  .hero .meta-item{font-size:12px;color:var(--muted)}
+  .hero .meta-item strong{color:var(--ink-soft)}
+  section{padding-top:52px}
+  section+section{border-top:1px solid var(--line)}
+  footer{padding:32px 56px;color:var(--muted);font-size:12px;border-top:1px solid var(--line);max-width:1320px;margin:0 auto;line-height:1.7}
+  .callout{border-radius:6px;padding:18px 22px;margin:18px 0;border:1px solid}
+  .callout.blue{border-color:#b3cce8;background:var(--accent-soft)}
+  .callout.green{border-color:#a8d4bb;background:var(--green-soft)}
+  .callout.amber{border-color:#e8c28a;background:var(--amber-soft)}
+  .callout.red{border-color:#e8a8a8;background:var(--red-soft)}
+  .callout.purple{border-color:#c5b8e8;background:var(--purple-soft)}
+  .callout .tag{display:block;font-size:11px;letter-spacing:.08em;text-transform:uppercase;font-weight:700;margin-bottom:6px}
+  .callout.blue .tag{color:var(--accent-deep)}
+  .callout.green .tag{color:var(--green)}
+  .callout.amber .tag{color:var(--amber)}
+  .callout.red .tag{color:var(--red)}
+  .callout.purple .tag{color:var(--purple)}
+  .callout p:last-child{margin:0}
+  table{width:100%;border-collapse:collapse;margin:16px 0;font-size:14px}
+  th,td{text-align:left;padding:11px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{background:#f0f4f8;font-weight:600;font-size:12.5px;color:var(--ink);letter-spacing:.02em}
+  tr:hover td{background:#fafbfd}
+  .cb{background:#1e2d3d;border-radius:8px;padding:20px 22px;margin:16px 0;overflow-x:auto}
+  .cb pre{color:#cdd9e5;font:13px/1.75 ui-monospace,Menlo,Consolas,monospace;margin:0;white-space:pre}
+  .cb .c{color:#6e9cbf}
+  .cb .k{color:#79b8ff}
+  .cb .s{color:#9ecbff}
+  .cb .n{color:#b392f0}
+  .cb .f{color:#85e89d}
+  .cb .t{color:#ffab70}
+  .anno{list-style:none;margin:4px 0 24px;padding:0;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+  .anno li{display:grid;grid-template-columns:36px 1fr;gap:0;border-bottom:1px solid var(--line);font-size:13.5px}
+  .anno li:last-child{border-bottom:none}
+  .anno .num{background:var(--accent-deep);color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;font-family:ui-monospace,Menlo,Consolas,monospace}
+  .anno .txt{padding:10px 14px;color:var(--ink-soft);line-height:1.5}
+  .anno .txt strong{color:var(--ink)}
+  .formula{background:#f0f4f8;border:1px solid var(--line);border-radius:6px;padding:14px 20px;margin:14px 0;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:14px;color:var(--ink);text-align:center;line-height:1.8}
+  .series-nav{display:flex;gap:8px;flex-wrap:wrap;margin:18px 0}
+  .series-nav a{display:inline-block;padding:6px 14px;border-radius:6px;font-size:12.5px;font-weight:600;border:1px solid var(--line);background:var(--paper);color:var(--ink-soft)}
+  .series-nav a.current{background:var(--accent-deep);color:#fff;border-color:var(--accent-deep)}
+  .series-nav a:hover{border-color:var(--accent);color:var(--accent);text-decoration:none}
+  .concept-header{background:var(--accent-deep);color:#fff;border-radius:8px 8px 0 0;padding:12px 18px;margin-bottom:0}
+  .concept-header h3{color:#fff;margin:0;font-size:16px}
+  .concept-body{border:1px solid var(--accent-deep);border-top:none;border-radius:0 0 8px 8px;padding:18px;margin-bottom:24px;background:var(--paper)}
+</style>
+</head>
+<body>
+<div class="layout">
+
+<aside class="toc">
+  <div class="toc-brand">PERSONAL BRIEFING — CONTAMINATION SCREEN CODE<br>10 May 2026</div>
+  <div class="toc-section">This document</div>
+  <ul>
+    <li><a href="#log2">Log2 ratios</a></li>
+    <li><a href="#histograms">Histograms in numpy</a></li>
+    <li><a href="#zscore">Z-scores</a></li>
+    <li><a href="#nan">NaN values</a></li>
+    <li><a href="#merge">DataFrame merges</a></li>
+    <li><a href="#subprocess">Subprocess and pipes</a></li>
+    <li><a href="#deadlock">Deadlock prevention</a></li>
+    <li><a href="#threads">ThreadPoolExecutor</a></li>
+    <li><a href="#path">Path objects</a></li>
+  </ul>
+  <div class="meta">Part 3 of 5<br>Background concepts<br>No prior knowledge assumed</div>
+</aside>
+
+<main>
+<header class="hero">
+  <div class="eyebrow">Code explainer · Part 3 of 5 · Key concepts</div>
+  <h1>Background knowledge</h1>
+  <p class="sub">Nine concepts you need to understand before the code makes sense, explained from first principles: log2 ratios, numpy histograms, z-scores, subprocess pipes, deadlock prevention, and parallel threads.</p>
+  <div class="meta-row">
+    <span class="meta-item"><strong>Author</strong> Joo Wook Ahn</span>
+    <span class="meta-item"><strong>Date</strong> 10 May 2026</span>
+    <span class="meta-item"><strong>Assumes</strong> Basic Python; no prior numpy/subprocess/threading experience needed</span>
+  </div>
+</header>
+
+<div class="series-nav">
+  <a href="Contamination_Screen_Code_Explainer_1.html">1 · High-level outline</a>
+  <a href="Contamination_Screen_Code_Explainer_2.html">2 · Module structure</a>
+  <a href="Contamination_Screen_Code_Explainer_3.html" class="current">3 · Key concepts</a>
+  <a href="Contamination_Screen_Code_Explainer_4.html">4 · Function walkthrough</a>
+  <a href="Contamination_Screen_Code_Explainer_5.html">5 · Line-by-line reference</a>
+</div>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<section id="log2">
+  <h2><span class="sec-num">01</span> Log2 ratios — why log2, not plain ratios?</h2>
+
+  <p>The core of the algorithm computes <code>VAF_B / VAF_A</code> for every shared variant. The raw ratio has an asymmetry problem: a ratio of 2.0 (B has twice A's VAF) is just as "far from 1" as a ratio of 0.5 (A has twice B's VAF), but on a linear scale they look different — one is +1 unit from 1, the other is −0.5 units from 1.</p>
+
+  <p>Taking the log₂ fixes this symmetry:</p>
+
+  <div class="formula">log₂(2.0) = +1.0<br>log₂(1.0) = 0.0   ← no contamination<br>log₂(0.5) = −1.0</div>
+
+  <p>Now both directions are symmetric around zero. A positive log2 ratio means B has the higher VAF (B is the source); a negative log2 ratio means A has the higher VAF (A is the source). The magnitude tells you the contamination fraction, and the sign tells you the direction.</p>
+
+  <h3>How to read a log2 ratio value</h3>
+
+  <table>
+    <thead>
+      <tr><th>log2(ratio)</th><th>Actual ratio (VAF_B / VAF_A)</th><th>Interpretation</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>0.0</td><td>1.0</td><td>Both samples have identical VAF — shared germline or swap</td></tr>
+      <tr><td>−1.0</td><td>0.5</td><td>VAF_B is half VAF_A — ~50% contamination, A is source</td></tr>
+      <tr><td>−2.0</td><td>0.25</td><td>VAF_B is a quarter VAF_A — ~25% contamination, A is source</td></tr>
+      <tr><td>+1.0</td><td>2.0</td><td>VAF_B is double VAF_A — ~50% contamination, B is source</td></tr>
+      <tr><td>−3.0</td><td>0.125</td><td>~12.5% contamination, A is source</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout blue">
+    <span class="tag">In the code</span>
+    <p><code>np.log2(ratios.values)</code> in <code>_compare()</code> computes log2 of every ratio at once using numpy's vectorised operation. This is orders of magnitude faster than calling <code>math.log2()</code> in a Python loop over each row.</p>
+  </div>
+
+  <h3>Why not log10 or natural log?</h3>
+  <p>Log₂ is used because the contamination signal typically produces peaks at multiples of 1 on the log₂ scale (−1 for ~50%, −2 for ~25%, etc.), making results visually interpretable. Any logarithm base would work for the algorithm — log₂ is a readability choice.</p>
+</section>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<section id="histograms">
+  <h2><span class="sec-num">02</span> Histograms in numpy</h2>
+
+  <p>A histogram counts how many values fall into each of a set of fixed-width bins. In this tool, the bins cover log2 ratios from −4 to +4, each 0.2 units wide. The histogram turns a list of ~20–100 ratio values into a shape — a curve with peaks and troughs.</p>
+
+  <h3>How <code>np.histogram()</code> works</h3>
+
+  <div class="cb"><pre><span class="c"># Example: a contaminated pair with 5 shared variants</span>
+log2_ratios = [-1.05, -0.98, -1.02, -1.10, 0.03]
+
+<span class="c"># np.histogram returns (counts_array, bin_edges_array)</span>
+counts, edges = np.histogram(log2_ratios, bins=[-1.2, -1.0, -0.8, -0.2, 0.2])
+
+<span class="c"># counts = [1, 3, 0, 1]  — 1 value in [-1.2,-1.0), 3 in [-1.0,-0.8), etc.</span>
+<span class="c"># edges  = [-1.2, -1.0, -0.8, -0.2, 0.2]  — the bin boundaries</span>
+
+<span class="c"># Bin centres = (edges[:-1] + edges[1:]) / 2</span>
+centers = (edges[:-1] + edges[1:]) / 2
+<span class="c"># centers = [-1.1, -0.9, -0.5, 0.0]</span>
+
+<span class="c"># The bin with the most values is the peak</span>
+idx_peak = np.argmax(counts)   <span class="c"># idx_peak = 1  (the -1.0 to -0.8 bin)</span>
+peak_center = centers[idx_peak] <span class="c"># peak_center = -0.9</span></pre></div>
+
+  <ul class="anno">
+    <li><div class="num">1</div><div class="txt"><strong><code>np.histogram(values, bins=edges)</code></strong> returns two arrays: <code>counts</code> (how many values fell in each bin) and <code>edges</code> (the bin boundaries, always one element longer than counts). For N bins you need N+1 edge values.</div></li>
+    <li><div class="num">2</div><div class="txt"><strong>Bin centres</strong> are computed as <code>(edges[:-1] + edges[1:]) / 2</code>. <code>edges[:-1]</code> is all edges except the last; <code>edges[1:]</code> is all edges except the first. Averaging them pairwise gives the midpoint of each bin.</div></li>
+    <li><div class="num">3</div><div class="txt"><strong><code>np.argmax(counts)</code></strong> returns the <em>index</em> of the maximum value in the counts array. Using that index on <code>centers</code> gives the log2 position of the tallest bin — the peak.</div></li>
+  </ul>
+
+  <h3>How the code generates the bin edges</h3>
+
+  <div class="cb"><pre>edges = np.arange(
+    -_LOG2_RANGE - bin_width / <span class="n">2</span>,   <span class="c"># start: -4.1 (half-bin before -4.0)</span>
+     _LOG2_RANGE + bin_width,         <span class="c"># stop:  +4.2 (ensures +4.0 is included)</span>
+     bin_width,                       <span class="c"># step:  0.2</span>
+)</pre></div>
+
+  <p>The start is shifted back by half a bin width so that a ratio of exactly 1.0 (log2 = 0.0) falls in the <em>centre</em> of a bin, not on a bin edge. This prevents a clean signal being split between two adjacent bins.</p>
+</section>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<section id="zscore">
+  <h2><span class="sec-num">03</span> Z-scores — what they are and why they're used here</h2>
+
+  <p>A z-score expresses a value as the number of standard deviations it is above or below the mean of a group. It answers the question: <em>"Is this value unusual compared to the others?"</em></p>
+
+  <div class="formula">z = (value − mean) / standard_deviation</div>
+
+  <p>In this tool, the value is <code>n_shared</code> — how many variants two samples share. The mean and standard deviation are computed across all pairs in the run. A z-score of 2.0 means the pair shares variants at a rate that is 2 standard deviations above average for this run, which is unusual.</p>
+
+  <h3>Why is it computed within a single run?</h3>
+  <p>Two VEP configurations have been used in the Uranus pipeline at different times. The newer config (gnomADg + gnomADe) produces a mean n_shared ≈ 19 per pair; the older config (gnomADe only) produces a mean ≈ 8. These are different populations. If you pooled all 100 runs and computed a global z-score, a pair from an older run with n_shared = 14 would look wildly elevated (7+ SDs above the older config mean of 8), when in fact it is normal for that config.</p>
+  <p>By computing z-scores within each run, the baseline adapts automatically. A pair with n_shared = 14 on an older-config run has a z-score determined by the distribution of that run alone.</p>
+
+  <h3>In the code</h3>
+  <div class="cb"><pre>n_mean = df[<span class="s">"n_shared"</span>].mean()
+n_std  = df[<span class="s">"n_shared"</span>].std()
+df[<span class="s">"n_shared_z"</span>] = (df[<span class="s">"n_shared"</span>] - n_mean) / n_std <span class="k">if</span> n_std > <span class="n">0</span> <span class="k">else</span> <span class="n">0.0</span></pre></div>
+
+  <p>The <code>if n_std &gt; 0 else 0.0</code> guard handles the edge case where all pairs have identical n_shared (zero variance) — dividing by zero would produce NaN values. In that edge case all z-scores are set to 0.0, and no pair would be flagged on the z-score criterion alone.</p>
+
+  <div class="callout green">
+    <span class="tag">What z = 2.0 means in practice</span>
+    <p>For a normally distributed variable, about 97.7% of values fall below a z-score of 2.0. So a pair with n_shared_z ≥ 2.0 is in the top ~2.3% of pairs by shared variant count for that run. Combined with peak_count ≥ 10, this dual threshold means a pair must be unusual in two independent ways before it is flagged.</p>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<section id="nan">
+  <h2><span class="sec-num">04</span> NaN — Not a Number</h2>
+
+  <p><code>float("nan")</code> is a special floating-point value meaning "no result". It is used extensively in the results dicts to fill in columns that could not be computed — for example, if a pair has fewer than 2 shared variants, there is no histogram to analyse, so all peak-related columns are set to NaN.</p>
+
+  <h3>Key NaN behaviours to know</h3>
+  <table>
+    <thead>
+      <tr><th>Operation</th><th>Result</th><th>Why it matters</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><code>nan == nan</code></td><td><code>False</code></td><td>You cannot compare NaN with ==. Use <code>math.isnan(x)</code> or <code>pd.isna(x)</code> instead.</td></tr>
+      <tr><td><code>nan + 1</code></td><td><code>nan</code></td><td>Any arithmetic with NaN propagates NaN. This is why the code checks <code>if not math.isnan(plr):</code> before computing <code>2.0 ** plr</code>.</td></tr>
+      <tr><td><code>df.to_csv(..., na_rep="NA")</code></td><td>Writes "NA"</td><td>Without <code>na_rep</code>, NaN would appear as an empty cell in TSV output.</td></tr>
+      <tr><td><code>freemix_flag.fillna(False)</code></td><td>Treats missing as False</td><td>If FREEMIX data is missing for a sample, <code>fillna(False)</code> ensures the pair is not flagged — the safe conservative choice.</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<section id="merge">
+  <h2><span class="sec-num">05</span> pandas DataFrame merges</h2>
+
+  <p>The heart of <code>_compare()</code> is a DataFrame merge — finding variants that exist in <em>both</em> samples. This is equivalent to a SQL inner join on the variant coordinates.</p>
+
+  <div class="cb"><pre><span class="c"># df_a has variants for sample A; df_b has variants for sample B</span>
+<span class="c"># We want rows where both samples have the same chr:pos:ref:alt</span>
+
+merged = pd.merge(
+    df_a[[<span class="s">"chrom"</span>, <span class="s">"pos"</span>, <span class="s">"ref"</span>, <span class="s">"alt"</span>, <span class="s">"af"</span>, <span class="s">"gene"</span>]].rename(
+        columns={<span class="s">"af"</span>: <span class="s">"af_a"</span>}),       <span class="c"># ①</span>
+    df_b[[<span class="s">"chrom"</span>, <span class="s">"pos"</span>, <span class="s">"ref"</span>, <span class="s">"alt"</span>, <span class="s">"af"</span>]].rename(
+        columns={<span class="s">"af"</span>: <span class="s">"af_b"</span>}),       <span class="c"># ②</span>
+    on=[<span class="s">"chrom"</span>, <span class="s">"pos"</span>, <span class="s">"ref"</span>, <span class="s">"alt"</span>], <span class="c"># ③</span>
+    how=<span class="s">"inner"</span>,                       <span class="c"># ④</span>
+)</pre></div>
+
+  <ul class="anno">
+    <li><div class="num">①</div><div class="txt"><strong>Select and rename columns from sample A.</strong> Only the columns needed for comparison are selected. The <code>af</code> column is renamed to <code>af_a</code> so that after the merge we can tell which allele frequency came from which sample. The gene column is kept for detail TSV output.</div></li>
+    <li><div class="num">②</div><div class="txt"><strong>Select and rename columns from sample B.</strong> Same pattern — <code>af</code> becomes <code>af_b</code>.</div></li>
+    <li><div class="num">③</div><div class="txt"><strong>The join key: <code>on=["chrom","pos","ref","alt"]</code>.</strong> A variant is only considered "shared" if all four coordinates match exactly. Two variants at the same position but with different alt alleles (e.g. a C→T and a C→G at the same base) are <em>not</em> shared. This is why normalisation (<code>bcftools norm -m -any</code>) must have been run first — without it, the same variant might appear with different representations.</div></li>
+    <li><div class="num">④</div><div class="txt"><strong><code>how="inner"</code></strong> means only rows present in <em>both</em> DataFrames are kept. Variants unique to one sample are dropped. This is the correct behaviour — we only want variants that can be meaningfully compared.</div></li>
+  </ul>
+
+  <p>After the merge, each row of <code>merged</code> represents one variant seen in both samples. The ratio is then computed as a new column:</p>
+
+  <div class="cb"><pre>merged[<span class="s">"ratio"</span>]      = merged[<span class="s">"af_b"</span>] / merged[<span class="s">"af_a"</span>]
+merged[<span class="s">"log2_ratio"</span>] = np.log2(merged[<span class="s">"ratio"</span>].values)</pre></div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<section id="subprocess">
+  <h2><span class="sec-num">06</span> Calling external programs with subprocess</h2>
+
+  <p>Python's <code>subprocess</code> module lets you run external programs and capture their output. Two patterns are used in this code:</p>
+
+  <h3>Pattern 1 — subprocess.run() for simple commands</h3>
+  <p>Used in <code>_run()</code> and wherever a single bcftools command is needed (e.g. indexing).</p>
+
+  <div class="cb"><pre>result = subprocess.run(
+    [<span class="s">"bcftools"</span>, <span class="s">"view"</span>, <span class="s">"-h"</span>, str(vcf)],  <span class="c"># ①</span>
+    stdout=subprocess.PIPE,                 <span class="c"># ②</span>
+    stderr=subprocess.PIPE,                 <span class="c"># ③</span>
+    check=<span class="k">False</span>,                            <span class="c"># ④</span>
+)
+output_text = result.stdout.decode()        <span class="c"># ⑤</span>
+exit_code   = result.returncode             <span class="c"># ⑥</span></pre></div>
+
+  <ul class="anno">
+    <li><div class="num">①</div><div class="txt"><strong>Command as a list of strings.</strong> Each word is a separate list element — never use a single string like <code>"bcftools view -h file.vcf"</code>, as that requires <code>shell=True</code> which is a security risk. The list form is safe and explicit.</div></li>
+    <li><div class="num">②</div><div class="txt"><strong><code>stdout=subprocess.PIPE</code></strong> tells Python to capture the program's standard output (what would normally print to the terminal) and make it available as <code>result.stdout</code> (a bytes object).</div></li>
+    <li><div class="num">③</div><div class="txt"><strong><code>stderr=subprocess.PIPE</code></strong> captures error messages. If you don't capture stderr it goes straight to the terminal, which can be confusing. Capturing it lets the code decide whether to log it or raise an error.</div></li>
+    <li><div class="num">④</div><div class="txt"><strong><code>check=False</code></strong> means Python will not raise an exception if the command exits with a non-zero return code. The code checks <code>result.returncode</code> manually. <code>check=True</code> (used in the <code>_run()</code> wrapper) raises <code>subprocess.CalledProcessError</code> automatically.</div></li>
+    <li><div class="num">⑤</div><div class="txt"><strong><code>.decode()</code></strong> converts bytes to a Python string. All subprocess output comes back as bytes. <code>.decode()</code> uses UTF-8 by default, which is correct for bcftools output.</div></li>
+    <li><div class="num">⑥</div><div class="txt"><strong><code>returncode</code>.</strong> 0 means success; any non-zero value means the command failed. bcftools uses 1 for errors.</div></li>
+  </ul>
+
+  <h3>Pattern 2 — subprocess.Popen() for piped commands</h3>
+  <p>Used in <code>filter_vcf()</code> to chain four bcftools commands together, just as you would with <code>|</code> in the shell.</p>
+
+  <figure>
+  <div class="fig-wrap">
+  <svg viewBox="0 0 820 180" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Four piped subprocesses showing stdout and stderr connections">
+    <style>.pb{font:bold 11px ui-monospace,Menlo,monospace}.ps{font:10px -apple-system,sans-serif}.pl{font:10px -apple-system,sans-serif;letter-spacing:1}</style>
+    <defs>
+      <marker id="pa" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto"><path d="M0,0 L7,2.5 L0,5" fill="#005eb8"/></marker>
+      <marker id="pe" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto"><path d="M0,0 L7,2.5 L0,5" fill="#9b2335"/></marker>
+      <marker id="pt" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto"><path d="M0,0 L7,2.5 L0,5" fill="#1a6e47"/></marker>
+    </defs>
+    <text x="20" y="15" class="pl" fill="#6b7c8d">SUBPROCESS PIPE CHAIN</text>
+    <!-- Process boxes -->
+    <rect x="20" y="28" width="150" height="50" rx="6" fill="#e3edf8" stroke="#005eb8" stroke-width="1.5"/>
+    <text x="95" y="49" text-anchor="middle" class="pb" fill="#003d78">p1: bcftools view</text>
+    <text x="95" y="65" text-anchor="middle" class="ps" fill="#6b7c8d">-f PASS</text>
+    <rect x="220" y="28" width="150" height="50" rx="6" fill="#e3edf8" stroke="#005eb8" stroke-width="1.5"/>
+    <text x="295" y="49" text-anchor="middle" class="pb" fill="#003d78">p2: bcftools filter</text>
+    <text x="295" y="65" text-anchor="middle" class="ps" fill="#6b7c8d">DP, AF thresholds</text>
+    <rect x="420" y="28" width="155" height="50" rx="6" fill="#e3edf8" stroke="#005eb8" stroke-width="1.5"/>
+    <text x="497" y="49" text-anchor="middle" class="pb" fill="#003d78">p3: +split-vep</text>
+    <text x="497" y="65" text-anchor="middle" class="ps" fill="#6b7c8d">extract CSQ fields</text>
+    <rect x="625" y="28" width="175" height="50" rx="6" fill="#e0f0e8" stroke="#1a6e47" stroke-width="1.5"/>
+    <text x="712" y="49" text-anchor="middle" class="pb" fill="#1a6e47">p4: bcftools view</text>
+    <text x="712" y="65" text-anchor="middle" class="ps" fill="#6b7c8d">gnomAD filter, write .gz</text>
+    <!-- stdout pipes (blue, horizontal) -->
+    <line x1="170" y1="53" x2="220" y2="53" stroke="#005eb8" stroke-width="2" marker-end="url(#pa)"/>
+    <text x="195" y="47" text-anchor="middle" class="ps" fill="#005eb8">stdout</text>
+    <line x1="370" y1="53" x2="420" y2="53" stroke="#005eb8" stroke-width="2" marker-end="url(#pa)"/>
+    <text x="395" y="47" text-anchor="middle" class="ps" fill="#005eb8">stdout</text>
+    <line x1="575" y1="53" x2="625" y2="53" stroke="#005eb8" stroke-width="2" marker-end="url(#pa)"/>
+    <text x="600" y="47" text-anchor="middle" class="ps" fill="#005eb8">stdout</text>
+    <!-- stderr pipes (red, downward) -->
+    <line x1="95" y1="78" x2="95" y2="118" stroke="#9b2335" stroke-width="1.5" marker-end="url(#pe)"/>
+    <line x1="295" y1="78" x2="295" y2="118" stroke="#9b2335" stroke-width="1.5" marker-end="url(#pe)"/>
+    <line x1="497" y1="78" x2="497" y2="118" stroke="#9b2335" stroke-width="1.5" marker-end="url(#pe)"/>
+    <line x1="712" y1="78" x2="712" y2="118" stroke="#9b2335" stroke-width="1.5" marker-end="url(#pe)"/>
+    <!-- Drain thread boxes -->
+    <rect x="30" y="118" width="130" height="28" rx="4" fill="#fce8ea" stroke="#9b2335" stroke-width="1"/>
+    <text x="95" y="136" text-anchor="middle" class="ps" fill="#9b2335">drain thread (bg)</text>
+    <rect x="230" y="118" width="130" height="28" rx="4" fill="#fce8ea" stroke="#9b2335" stroke-width="1"/>
+    <text x="295" y="136" text-anchor="middle" class="ps" fill="#9b2335">drain thread (bg)</text>
+    <rect x="432" y="118" width="130" height="28" rx="4" fill="#fce8ea" stroke="#9b2335" stroke-width="1"/>
+    <text x="497" y="136" text-anchor="middle" class="ps" fill="#9b2335">drain thread (bg)</text>
+    <rect x="645" y="118" width="130" height="28" rx="4" fill="#e0f0e8" stroke="#1a6e47" stroke-width="1"/>
+    <text x="710" y="136" text-anchor="middle" class="ps" fill="#1a6e47">p4.communicate()</text>
+    <!-- Labels -->
+    <text x="95" y="162" text-anchor="middle" class="ps" fill="#6b7c8d">must drain or deadlock</text>
+    <text x="295" y="162" text-anchor="middle" class="ps" fill="#6b7c8d">must drain or deadlock</text>
+    <text x="497" y="162" text-anchor="middle" class="ps" fill="#6b7c8d">must drain or deadlock</text>
+    <text x="710" y="162" text-anchor="middle" class="ps" fill="#1a6e47">main thread waits here</text>
+  </svg>
+  </div>
+  <figcaption>Figure C &#183; Subprocess pipe chain. Blue arrows are stdout (data flowing forward). Red arrows are stderr (error messages flowing to drain threads). p1/p2/p3 each need a background drain thread; p4 is handled directly by the main thread via communicate().</figcaption>
+  </figure>
+
+  <div class="cb"><pre><span class="c"># Shell equivalent:</span>
+<span class="c"># bcftools view -f PASS input.vcf.gz | bcftools filter -e ... | bcftools +split-vep ... | bcftools view -Oz -o out.vcf.gz</span>
+
+p1 = subprocess.Popen(cmd1, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+p2 = subprocess.Popen(cmd2, stdin=p1.stdout,        <span class="c"># ①</span>
+                      stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+p1.stdout.close()                                    <span class="c"># ②</span>
+p3 = subprocess.Popen(cmd3, stdin=p2.stdout,
+                      stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+p2.stdout.close()
+p4 = subprocess.Popen(cmd4, stdin=p3.stdout,
+                      stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+p3.stdout.close()</pre></div>
+
+  <ul class="anno">
+    <li><div class="num">①</div><div class="txt"><strong><code>stdin=p1.stdout</code></strong> connects p1's output directly to p2's input, creating a pipe. Data flows from p1 → p2 → p3 → p4 in memory, without any temporary files being written to disk. This is equivalent to the shell <code>|</code> operator.</div></li>
+    <li><div class="num">②</div><div class="txt"><strong><code>p1.stdout.close()</code></strong> is called in the parent process after p2 has inherited the file descriptor. This is required so that when p2 finishes reading, p1 receives an end-of-file signal and can exit cleanly. If you don't close it, p1 may hang waiting for a reader that never finishes.</div></li>
+  </ul>
+</section>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<section id="deadlock">
+  <h2><span class="sec-num">07</span> Deadlock prevention — why <code>_drain_stderr()</code> exists</h2>
+
+  <p>This is one of the subtler parts of the code. It exists to prevent a specific failure mode that is easy to trigger but hard to diagnose.</p>
+
+  <h3>What is a pipe buffer?</h3>
+  <p>When one process writes to a pipe and another process reads from it, the OS maintains a small buffer (typically 64KB on Linux). If the writing process fills this buffer <em>before</em> the reading process has consumed it, the writer blocks — it cannot write more until space is freed. If at the same time the reading process is waiting for the writer to finish before it starts reading, both processes wait for each other forever. This is a deadlock.</p>
+
+  <h3>The problem in filter_vcf()</h3>
+  <p>Processes p1, p2, and p3 all write error messages to their stderr pipes. The parent process (Python) only reads p4's output directly. If p1, p2, or p3 write more than 64KB to stderr (which can happen with large VCFs or certain bcftools warnings), their stderr buffer fills up, they block, and the entire pipeline stalls.</p>
+
+  <h3>The fix: background drain threads</h3>
+  <div class="cb"><pre><span class="k">def</span> <span class="f">_drain_stderr</span>(stream, collector: list) -> <span class="k">None</span>:
+    <span class="s">"""Read all stderr from a subprocess pipe into collector list."""</span>
+    collector.append(stream.read())  <span class="c"># blocks until EOF, then stores bytes</span>
+
+<span class="c"># In filter_vcf(), for each of p1, p2, p3:</span>
+stderr_collectors = {p: [] <span class="k">for</span> p <span class="k">in</span> (p1, p2, p3)}
+drain_threads = [
+    threading.Thread(target=_drain_stderr, args=(p.stderr, stderr_collectors[p]))
+    <span class="k">for</span> p <span class="k">in</span> (p1, p2, p3)
+]
+<span class="k">for</span> t <span class="k">in</span> drain_threads:
+    t.start()     <span class="c"># each thread immediately starts reading stderr</span>
+
+_, p4_err = p4.communicate()   <span class="c"># main thread waits for p4 to finish</span>
+<span class="k">for</span> t <span class="k">in</span> drain_threads:
+    t.join()      <span class="c"># then wait for drain threads to finish</span></pre></div>
+
+  <p>Each drain thread continuously reads from one process's stderr pipe. Because the reads happen in a background thread, the subprocess never blocks — it can always write more stderr. The collected bytes are stored in <code>stderr_collectors</code> and only examined later when checking return codes.</p>
+
+  <figure>
+  <div class="fig-wrap">
+  <svg viewBox="0 0 820 160" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Deadlock illustration showing two processes blocking each other">
+    <style>.db{font:bold 12px -apple-system,sans-serif}.ds{font:11px -apple-system,sans-serif}.dl{font:10px -apple-system,sans-serif;letter-spacing:1}</style>
+    <defs><marker id="dba" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto"><path d="M0,0 L7,2.5 L0,5" fill="#9b2335"/></marker></defs>
+    <text x="20" y="15" class="dl" fill="#6b7c8d">DEADLOCK SCENARIO (WITHOUT DRAIN THREADS)</text>
+    <rect x="40" y="30" width="160" height="60" rx="6" fill="#fce8ea" stroke="#9b2335" stroke-width="2"/>
+    <text x="120" y="57" text-anchor="middle" class="db" fill="#9b2335">p1: writing to</text>
+    <text x="120" y="74" text-anchor="middle" class="ds" fill="#9b2335">stderr (BLOCKED)</text>
+    <rect x="620" y="30" width="160" height="60" rx="6" fill="#fce8ea" stroke="#9b2335" stroke-width="2"/>
+    <text x="700" y="57" text-anchor="middle" class="db" fill="#9b2335">p2: waiting for</text>
+    <text x="700" y="74" text-anchor="middle" class="ds" fill="#9b2335">p1 to finish (BLOCKED)</text>
+    <rect x="290" y="38" width="240" height="44" rx="6" fill="#f0f4f8" stroke="#c5d0db"/>
+    <text x="410" y="57" text-anchor="middle" class="ds" fill="#354656">64 KB stderr pipe buffer</text>
+    <text x="410" y="73" text-anchor="middle" class="ds" fill="#9b2335" font-weight="bold">FULL &#8212; p1 cannot write more</text>
+    <line x1="200" y1="60" x2="290" y2="60" stroke="#9b2335" stroke-width="2" marker-end="url(#dba)"/>
+    <line x1="530" y1="60" x2="620" y2="60" stroke="#9b2335" stroke-width="2" stroke-dasharray="5 3"/>
+    <text x="700" y="115" text-anchor="middle" class="ds" fill="#6b7c8d">p2 never starts reading</text>
+    <text x="700" y="130" text-anchor="middle" class="ds" fill="#6b7c8d">so p1 never empties buffer</text>
+    <text x="120" y="115" text-anchor="middle" class="ds" fill="#6b7c8d">p1 can&#39;t finish until</text>
+    <text x="120" y="130" text-anchor="middle" class="ds" fill="#6b7c8d">buffer drains</text>
+    <text x="410" y="130" text-anchor="middle" font-size="13" fill="#9b2335" font-weight="bold">Both processes wait forever</text>
+  </svg>
+  </div>
+  <figcaption>Figure D &#183; The deadlock scenario. If p1 fills its 64 KB stderr buffer and no thread is reading it, p1 blocks. Meanwhile p2 is waiting for p1 to produce data. The fix: start a background thread that continuously reads p1&#8217;s stderr, keeping the buffer empty.</figcaption>
+  </figure>
+
+  <div class="callout amber">
+    <span class="tag">Why not just use communicate()?</span>
+    <p><code>subprocess.communicate()</code> safely handles deadlocks for a <em>single</em> process, but you cannot call it on p1, p2, p3 sequentially — you would first have to finish p1 before starting p2, which defeats the purpose of piping. The background drain thread pattern is the standard solution for multi-stage pipelines.</p>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<section id="threads">
+  <h2><span class="sec-num">08</span> ThreadPoolExecutor — parallel pairwise comparisons</h2>
+
+  <p>Phase 3 must run hundreds or thousands of pairwise comparisons. Running them one at a time on a single CPU would be slow. The code uses a <code>ThreadPoolExecutor</code> to run many comparisons simultaneously.</p>
+
+  <figure>
+  <div class="fig-wrap">
+  <svg viewBox="0 0 820 190" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="ThreadPoolExecutor fan-out and fan-in pattern">
+    <style>.tb{font:11px -apple-system,sans-serif}.tl{font:10px -apple-system,sans-serif;letter-spacing:1}.th{font:bold 12px -apple-system,sans-serif}</style>
+    <defs><marker id="ta" markerWidth="7" markerHeight="5" refX="7" refY="2.5" orient="auto"><path d="M0,0 L7,2.5 L0,5" fill="#005eb8"/></marker></defs>
+    <text x="20" y="15" class="tl" fill="#6b7c8d">THREADPOOLEXECUTOR PATTERN</text>
+    <!-- Tasks column -->
+    <text x="80" y="36" text-anchor="middle" class="tb" fill="#354656" font-weight="bold">tasks list</text>
+    <rect x="20" y="42" width="120" height="22" rx="4" fill="#e3edf8" stroke="#005eb8" stroke-width="1"/><text x="80" y="57" text-anchor="middle" class="tb" fill="#003d78">(A, B, df_cache, bw)</text>
+    <rect x="20" y="68" width="120" height="22" rx="4" fill="#e3edf8" stroke="#005eb8" stroke-width="1"/><text x="80" y="83" text-anchor="middle" class="tb" fill="#003d78">(A, C, df_cache, bw)</text>
+    <rect x="20" y="94" width="120" height="22" rx="4" fill="#e3edf8" stroke="#005eb8" stroke-width="1"/><text x="80" y="109" text-anchor="middle" class="tb" fill="#003d78">(B, C, df_cache, bw)</text>
+    <rect x="20" y="120" width="120" height="22" rx="4" fill="#e3edf8" stroke="#005eb8" stroke-width="1"/><text x="80" y="135" text-anchor="middle" class="tb" fill="#003d78">(A, D, df_cache, bw)</text>
+    <rect x="20" y="146" width="120" height="22" rx="4" fill="#e3edf8" stroke="#005eb8" stroke-width="1"/><text x="80" y="161" text-anchor="middle" class="tb" fill="#003d78">... N&#215;(N-1)/2 pairs</text>
+    <!-- Thread pool -->
+    <rect x="220" y="42" width="380" height="130" rx="8" fill="#f7f9fb" stroke="#c5d0db" stroke-width="1.5"/>
+    <text x="410" y="36" text-anchor="middle" class="tb" fill="#354656" font-weight="bold">ThreadPoolExecutor (8 threads)</text>
+    <rect x="235" y="55" width="160" height="40" rx="5" fill="#005eb8"/><text x="315" y="80" text-anchor="middle" class="tb" fill="#fff">Thread 1: _worker(A,B)</text>
+    <rect x="405" y="55" width="180" height="40" rx="5" fill="#005eb8"/><text x="495" y="80" text-anchor="middle" class="tb" fill="#fff">Thread 2: _worker(A,C)</text>
+    <rect x="235" y="103" width="160" height="40" rx="5" fill="#1a73c4"/><text x="315" y="128" text-anchor="middle" class="tb" fill="#fff">Thread 3: _worker(B,C)</text>
+    <rect x="405" y="103" width="180" height="40" rx="5" fill="#1a73c4"/><text x="495" y="128" text-anchor="middle" class="tb" fill="#fff">Thread 4: _worker(A,D)</text>
+    <!-- Results column -->
+    <text x="740" y="36" text-anchor="middle" class="tb" fill="#354656" font-weight="bold">raw_results list</text>
+    <rect x="680" y="42" width="120" height="22" rx="4" fill="#e0f0e8" stroke="#1a6e47" stroke-width="1"/><text x="740" y="57" text-anchor="middle" class="tb" fill="#1a6e47">{&#34;sample_a&#34;:&#34;A&#34;...}</text>
+    <rect x="680" y="68" width="120" height="22" rx="4" fill="#e0f0e8" stroke="#1a6e47" stroke-width="1"/><text x="740" y="83" text-anchor="middle" class="tb" fill="#1a6e47">{&#34;sample_a&#34;:&#34;A&#34;...}</text>
+    <rect x="680" y="94" width="120" height="22" rx="4" fill="#e0f0e8" stroke="#1a6e47" stroke-width="1"/><text x="740" y="109" text-anchor="middle" class="tb" fill="#1a6e47">{&#34;sample_a&#34;:&#34;B&#34;...}</text>
+    <rect x="680" y="120" width="120" height="22" rx="4" fill="#e0f0e8" stroke="#1a6e47" stroke-width="1"/><text x="740" y="135" text-anchor="middle" class="tb" fill="#1a6e47">{&#34;sample_a&#34;:&#34;A&#34;...}</text>
+    <rect x="680" y="146" width="120" height="22" rx="4" fill="#e0f0e8" stroke="#1a6e47" stroke-width="1"/><text x="740" y="161" text-anchor="middle" class="tb" fill="#1a6e47">same order as input</text>
+    <!-- Arrows in and out -->
+    <line x1="140" y1="100" x2="220" y2="100" stroke="#005eb8" stroke-width="2" marker-end="url(#ta)"/>
+    <line x1="600" y1="100" x2="680" y2="100" stroke="#005eb8" stroke-width="2" marker-end="url(#ta)"/>
+    <text x="180" y="94" text-anchor="middle" class="tb" fill="#005eb8">fan out</text>
+    <text x="640" y="94" text-anchor="middle" class="tb" fill="#005eb8">fan in</text>
+  </svg>
+  </div>
+  <figcaption>Figure E &#183; The ThreadPoolExecutor pattern. Tasks are distributed across the thread pool; results come back in the same order as the input tasks. Each thread runs _worker() independently on its own pair.</figcaption>
+  </figure>
+
+  <div class="cb"><pre><span class="c"># Build the task list — one tuple per pair</span>
+tasks = [
+    (na, nb, df_cache, args.bin_width)
+    <span class="k">for</span> na, nb <span class="k">in</span> combinations(sample_names, 2)  <span class="c"># ①</span>
+]
+
+<span class="c"># Run all tasks in parallel, collect results in order</span>
+<span class="k">with</span> ThreadPoolExecutor(max_workers=args.threads) <span class="k">as</span> executor:
+    raw_results = list(executor.map(_worker, tasks))  <span class="c"># ②</span></pre></div>
+
+  <ul class="anno">
+    <li><div class="num">①</div><div class="txt"><strong><code>combinations(sample_names, 2)</code></strong> generates all unique pairs. For 30 samples this is 435 tuples. Each tuple is packed with the sample names, the shared DataFrame cache, and the bin width setting — everything <code>_worker()</code> needs.</div></li>
+    <li><div class="num">②</div><div class="txt"><strong><code>executor.map(_worker, tasks)</code></strong> is like Python's built-in <code>map()</code> but runs the function calls in parallel across the thread pool. It returns results in the same order as the input tasks, and wraps everything up when all tasks are done. The <code>with</code> block ensures threads are properly shut down even if an exception occurs.</div></li>
+  </ul>
+
+  <h3>Why threads and not processes?</h3>
+  <p>Python has a Global Interpreter Lock (GIL) that prevents true parallel CPU execution across threads for pure Python code. However, numpy and pandas operations release the GIL — they run compiled C code underneath. Because <code>_compare()</code> spends most of its time in <code>pd.merge()</code> and <code>np.histogram()</code>, threads <em>do</em> provide genuine parallelism here, without the significant overhead of spawning separate processes (which would require serialising and deserialising the entire <code>df_cache</code> for each process).</p>
+
+  <div class="callout blue">
+    <span class="tag">Thread safety in this code</span>
+    <p><code>df_cache</code> is read-only during Phase 3 — no thread ever modifies it. Each thread creates its own local variables and returns a plain dict. Plain Python dicts are thread-safe to collect into a list via <code>executor.map()</code>. If any thread modified shared state, the code would need locks — but it is carefully designed to avoid that.</p>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<section id="path">
+  <h2><span class="sec-num">09</span> Path objects from pathlib</h2>
+
+  <p>Every file path in the code is a <code>Path</code> object. If you have only seen string-based path manipulation before (<code>"results/" + filename</code>), here is what to know:</p>
+
+  <div class="cb"><pre><span class="k">from</span> pathlib <span class="k">import</span> Path
+
+outdir = Path(<span class="s">"results"</span>)
+
+<span class="c"># Join paths with /  (works on Windows and Linux)</span>
+filtered_dir = outdir / <span class="s">"filtered"</span>   <span class="c"># Path("results/filtered")</span>
+dst = filtered_dir / vcf.name         <span class="c"># Path("results/filtered/sample.vcf.gz")</span>
+
+<span class="c"># File metadata</span>
+vcf.name    <span class="c"># "sample_annotated.vcf.gz"  — filename only</span>
+vcf.stem    <span class="c"># "sample_annotated.vcf"     — no final extension</span>
+vcf.suffix  <span class="c"># ".gz"                      — final extension</span>
+
+<span class="c"># Check existence and create directories</span>
+<span class="k">if</span> dst.exists():
+    ...
+outdir.mkdir(parents=<span class="k">True</span>, exist_ok=<span class="k">True</span>)  <span class="c"># creates results/ if needed</span>
+
+<span class="c"># Convert to string when bcftools needs it</span>
+subprocess.run([<span class="s">"bcftools"</span>, <span class="s">"view"</span>, str(dst)])</pre></div>
+
+  <div class="callout green">
+    <span class="tag">Why str(path) when calling bcftools?</span>
+    <p><code>subprocess</code> expects strings in the command list, not Path objects. <code>str(path)</code> converts cleanly. Most bcftools calls in the code wrap Path objects in <code>str()</code> for exactly this reason.</p>
+  </div>
+</section>
+
+<section id="next">
+  <h2><span class="sec-num">Next</span> Continue to part 4</h2>
+  <p>Part 4 walks through every function in the file — its purpose, its inputs and outputs, its key design decisions, and what to look for when reading the code. It is the main reference document for code review.</p>
+  <div class="series-nav">
+    <a href="Contamination_Screen_Code_Explainer_2.html">&#8592; 2 · Module structure</a>
+    <a href="Contamination_Screen_Code_Explainer_3.html" class="current">3 · Key concepts</a>
+    <a href="Contamination_Screen_Code_Explainer_4.html">4 · Function walkthrough &#8594;</a>
+  </div>
+</section>
+
+</main>
+</div>
+
+<footer>
+  Contamination Screen Code Explainer — Part 3 of 5 · Joo Wook Ahn, 10 May 2026.
+</footer>
+</body>
+</html>
