@@ -1,0 +1,464 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PR #16 Review Briefing — contamination_screen v1.0</title>
+<style>
+  :root{
+    --ink:#0d1b2a;--ink-soft:#354656;--muted:#6b7c8d;
+    --line:#e0e7ef;--line-strong:#c5d0db;
+    --bg:#f7f9fb;--paper:#ffffff;
+    --accent:#005eb8;--accent-deep:#003d78;--accent-mid:#1a73c4;--accent-soft:#e3edf8;
+    --green:#1a6e47;--green-soft:#e0f0e8;
+    --amber:#b35c00;--amber-soft:#fdf0e0;
+    --red:#9b2335;--red-soft:#fce8ea;
+    --purple:#4b2d8e;--purple-soft:#ede8f8;
+    --shadow:0 1px 3px rgba(13,27,42,.05),0 4px 20px rgba(13,27,42,.08);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{background:var(--bg);color:var(--ink);
+    font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;}
+  a{color:var(--accent-mid);text-decoration:none}
+  a:hover{text-decoration:underline}
+  .layout{display:grid;grid-template-columns:270px minmax(0,1fr);max-width:1320px;margin:0 auto}
+  @media(max-width:860px){.layout{grid-template-columns:1fr}.toc{display:none}}
+  main{padding:0 56px 96px;max-width:900px}
+  @media(max-width:860px){main{padding:0 24px 64px}}
+  h1{font-size:38px;line-height:1.1;letter-spacing:-.015em;font-weight:800;color:var(--ink);margin-bottom:14px;max-width:22ch}
+  h2{font-size:24px;font-weight:700;margin-bottom:16px;display:flex;align-items:center;gap:12px}
+  h2 .sec-num{font-size:12px;letter-spacing:.06em;text-transform:uppercase;background:var(--accent);color:#fff;padding:3px 9px;border-radius:999px;font-weight:700;white-space:nowrap}
+  h3{font-size:17px;font-weight:700;margin:28px 0 10px;color:var(--ink)}
+  h4{font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:20px 0 8px;font-weight:600}
+  p{margin-bottom:13px;color:var(--ink-soft)}
+  strong{color:var(--ink)}
+  ul,ol{margin:0 0 14px;padding-left:22px}
+  li{margin:5px 0;color:var(--ink-soft)}
+  code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;background:#f0f4f8;padding:2px 6px;border-radius:3px;color:var(--accent-deep)}
+
+  .toc{position:sticky;top:0;align-self:start;height:100vh;overflow-y:auto;padding:28px 24px;background:var(--paper);border-right:1px solid var(--line);font-size:13px}
+  .toc-brand{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--accent-deep);margin-bottom:20px;line-height:1.4}
+  .toc-section{font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin:18px 0 6px}
+  .toc ul{list-style:none}
+  .toc ul li a{display:block;padding:5px 0 5px 16px;color:var(--ink-soft);border-left:2px solid transparent;transition:all .15s;font-size:12.5px;line-height:1.4}
+  .toc ul li a:hover{color:var(--accent);border-left-color:var(--accent);text-decoration:none;padding-left:20px}
+  .toc .meta{margin-top:22px;padding-top:18px;border-top:1px solid var(--line);font-size:11.5px;color:var(--muted);line-height:1.6}
+
+  .hero{padding:52px 0 36px;border-bottom:1px solid var(--line);margin-bottom:8px}
+  .hero .eyebrow{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);font-weight:700;margin-bottom:12px}
+  .hero h1{font-size:38px;line-height:1.1;letter-spacing:-.015em;font-weight:800;color:var(--ink);margin-bottom:14px;max-width:22ch}
+  .hero .sub{font-size:17px;line-height:1.55;color:var(--ink-soft);max-width:64ch}
+  .hero .meta-row{display:flex;gap:24px;margin-top:20px;flex-wrap:wrap}
+  .hero .meta-item{font-size:12px;color:var(--muted)}
+  .hero .meta-item strong{color:var(--ink-soft)}
+
+  section{padding-top:52px}
+  section+section{border-top:1px solid var(--line)}
+  footer{padding:32px 56px;color:var(--muted);font-size:12px;border-top:1px solid var(--line);max-width:1320px;margin:0 auto;line-height:1.7}
+
+  .callout{border-radius:6px;padding:18px 22px;margin:18px 0;border:1px solid}
+  .callout.blue{border-color:#b3cce8;background:var(--accent-soft)}
+  .callout.green{border-color:#a8d4bb;background:var(--green-soft)}
+  .callout.amber{border-color:#e8c28a;background:var(--amber-soft)}
+  .callout.red{border-color:#e8a8a8;background:var(--red-soft)}
+  .callout .tag{display:block;font-size:11px;letter-spacing:.08em;text-transform:uppercase;font-weight:700;margin-bottom:6px}
+  .callout.blue .tag{color:var(--accent-deep)}
+  .callout.green .tag{color:var(--green)}
+  .callout.amber .tag{color:var(--amber)}
+  .callout.red .tag{color:var(--red)}
+  .callout p:last-child{margin:0}
+
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:22px 0}
+  @media(max-width:640px){.stats{grid-template-columns:repeat(2,1fr)}}
+  .stat{background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:16px;border-top:3px solid var(--accent)}
+  .stat .n{font-size:26px;font-weight:800;color:var(--accent-deep);line-height:1.1;font-variant-numeric:tabular-nums}
+  .stat .l{font-size:12px;color:var(--muted);margin-top:4px;line-height:1.4}
+
+  .card-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin:18px 0}
+  @media(max-width:640px){.card-grid{grid-template-columns:1fr}}
+  .card{background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:18px;box-shadow:var(--shadow)}
+  .card-head{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+  .card-icon{width:34px;height:34px;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:16px}
+  .card-name{font-weight:700;font-size:14.5px;color:var(--ink);line-height:1.2}
+  .card-sub{font-size:11.5px;color:var(--muted)}
+  .card p{font-size:13.5px;margin:0 0 10px}
+  .card p:last-child{margin:0}
+  .pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:600;letter-spacing:.04em}
+  .pill.green{background:var(--green-soft);color:var(--green)}
+  .pill.amber{background:var(--amber-soft);color:var(--amber)}
+  .pill.blue{background:var(--accent-soft);color:var(--accent-deep)}
+  .pill.purple{background:var(--purple-soft);color:var(--purple)}
+  .pill.red{background:var(--red-soft);color:var(--red)}
+
+  table{width:100%;border-collapse:collapse;margin:16px 0;font-size:14px}
+  th,td{text-align:left;padding:11px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{background:#f0f4f8;font-weight:600;font-size:12.5px;color:var(--ink);letter-spacing:.02em}
+  tr:hover td{background:#fafbfd}
+  td code{font-size:12px}
+
+  /* Change block — before/after */
+  .change{background:var(--paper);border:1px solid var(--line);border-radius:8px;overflow:hidden;margin:16px 0}
+  .change-header{padding:10px 16px;background:#f0f4f8;font-size:12.5px;font-weight:700;color:var(--ink);border-bottom:1px solid var(--line)}
+  .change-body{display:grid;grid-template-columns:1fr 1fr}
+  @media(max-width:640px){.change-body{grid-template-columns:1fr}}
+  .change-before,.change-after{padding:14px 16px}
+  .change-before{border-right:1px solid var(--line);background:#fff8f8}
+  .change-after{background:#f6fff8}
+  .change-label{font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;margin-bottom:8px}
+  .change-before .change-label{color:var(--red)}
+  .change-after .change-label{color:var(--green)}
+  .change-before code,.change-after code{background:transparent;padding:0;font-size:12.5px;display:block;line-height:1.7}
+  .change-before code{color:var(--red)}
+  .change-after code{color:var(--green)}
+
+  /* Commit strip */
+  .commit-strip{display:flex;flex-direction:column;gap:0;margin:20px 0;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .commit-row{display:grid;grid-template-columns:80px 1fr;border-bottom:1px solid var(--line)}
+  .commit-row:last-child{border-bottom:none}
+  .commit-sha{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;font-weight:700;padding:12px 14px;background:#f0f4f8;color:var(--accent-deep);display:flex;align-items:center;border-right:1px solid var(--line)}
+  .commit-msg{padding:12px 14px;font-size:13.5px;color:var(--ink-soft)}
+  .commit-msg strong{color:var(--ink);display:block;margin-bottom:2px;font-size:13px}
+  .commit-msg span{font-size:12px;color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="layout">
+
+<aside class="toc">
+  <div class="toc-brand">PERSONAL BRIEFING — PR #16 REVIEW<br>11 May 2026</div>
+  <div class="toc-section">Overview</div>
+  <ul>
+    <li><a href="#overview">The PR at a glance</a></li>
+    <li><a href="#commits">Commits</a></li>
+  </ul>
+  <div class="toc-section">Changes</div>
+  <ul>
+    <li><a href="#schema">Output schema rename</a></li>
+    <li><a href="#bugs">Bugs found and fixed</a></li>
+    <li><a href="#quality">Code quality &amp; docs</a></li>
+  </ul>
+  <div class="toc-section">Context</div>
+  <ul>
+    <li><a href="#confirmed">Design decisions confirmed</a></li>
+    <li><a href="#future">Future work flagged</a></li>
+  </ul>
+  <div class="meta">PR #16 · review/v1.0 &#8594; main<br>eastgenomics/contamination-screen<br>Reviewer: Emma-MacK</div>
+</aside>
+
+<main>
+<header class="hero">
+  <div class="eyebrow">Code review summary &#183; contamination-screen &#183; PR #16</div>
+  <h1>What changed in the v1.0 review</h1>
+  <p class="sub">The final state of every change made during code review of contamination_screen v1.0 &#8212; what was changed, what was confirmed intentional, and what was flagged for the future.</p>
+  <div class="meta-row">
+    <span class="meta-item"><strong>Author</strong> Joo Wook Ahn</span>
+    <span class="meta-item"><strong>Date</strong> 11 May 2026</span>
+    <span class="meta-item"><strong>Reviewer</strong> Emma-MacK</span>
+    <span class="meta-item"><strong>PR</strong> <a href="https://github.com/eastgenomics/contamination-screen/pull/16">#16</a></span>
+  </div>
+</header>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<section id="overview">
+  <h2><span class="sec-num">01</span> The PR at a glance</h2>
+
+  <p>PR #16 submitted the complete contamination_screen v1.0 codebase for human review against an empty <code>main</code> branch, so every line of code was visible as a diff. The review identified two genuine bugs, prompted a clarifying rename of output columns, and confirmed several design decisions that had surfaced as questions.</p>
+
+  <div class="stats">
+    <div class="stat">
+      <div class="n">3</div>
+      <div class="l">Post-review fix commits</div>
+    </div>
+    <div class="stat">
+      <div class="n">5</div>
+      <div class="l">Files changed during review</div>
+    </div>
+    <div class="stat">
+      <div class="n">2</div>
+      <div class="l">Bugs fixed</div>
+    </div>
+    <div class="stat">
+      <div class="n">16</div>
+      <div class="l">Output columns renamed</div>
+    </div>
+  </div>
+
+  <h3>Files in scope</h3>
+  <table>
+    <thead><tr><th>File</th><th>Role</th><th>Changed during review?</th></tr></thead>
+    <tbody>
+      <tr><td><code>contamination_screen.py</code></td><td>Core tool &#8212; 1,009 lines</td><td><span class="pill green">Yes &#8212; bugs + rename</span></td></tr>
+      <tr><td><code>dx_fetch.py</code></td><td>DNAnexus fetch helper</td><td><span class="pill amber">Minor &#8212; docs &amp; example</span></td></tr>
+      <tr><td><code>tests/test_compare.py</code></td><td>Unit tests for core logic</td><td><span class="pill amber">Minor &#8212; stale messages</span></td></tr>
+      <tr><td><code>README.md</code></td><td>Operations reference</td><td><span class="pill amber">Minor &#8212; rename + example</span></td></tr>
+      <tr><td><code>retrospective/RETROSPECTIVE_ANALYSIS_PLAN.md</code></td><td>Historical analysis plan</td><td><span class="pill amber">Note added</span></td></tr>
+      <tr><td>HTML docs (6 files)</td><td>Algorithm briefing &amp; code explainer</td><td><span class="pill blue">No changes needed</span></td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<section id="commits">
+  <h2><span class="sec-num">02</span> Post-review commits</h2>
+
+  <p>Three commits were pushed to <code>review/v1.0</code> after the review. They are ordered from smallest to largest in terms of scope.</p>
+
+  <div class="commit-strip">
+    <div class="commit-row">
+      <div class="commit-sha">1453ed8</div>
+      <div class="commit-msg">
+        <strong>fix: align plot bins with analysis bins; tidy naming and examples</strong>
+        <span>Bug fix (bin alignment), variable rename r&#8594;pair, control sample example, --exclude help, retrospective plan note</span>
+      </div>
+    </div>
+    <div class="commit-row">
+      <div class="commit-sha">5971c48</div>
+      <div class="commit-msg">
+        <strong>refactor: rename output columns for clarity</strong>
+        <span>overall_* &#8594; max_*, peak_* &#8594; non_unity_* throughout codebase, CLI flag, and README</span>
+      </div>
+    </div>
+    <div class="commit-row">
+      <div class="commit-sha">622d3f1</div>
+      <div class="commit-msg">
+        <strong>fix: patch missed rename in write_plots() and stale test error messages</strong>
+        <span>Bug fix (r[&#8216;n_shared&#8217;] NameError in write_plots()), three stale field names in test assertion messages</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="callout blue">
+    <span class="tag">Validation</span>
+    <p>After all three commits, the tool was re-run on RUN017 (46 samples, 1,035 pairs, known contamination event 26051K0066) with <code>--plots</code> enabled. The run completed without errors, the known contamination pair was flagged correctly (<code>non_unity_count=27</code>, <code>n_shared_z=9.26</code>), and the plot histogram bar count matched the reported <code>non_unity_count</code> exactly &#8212; confirming the bin alignment fix. All 4 unit tests pass.</p>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<section id="schema">
+  <h2><span class="sec-num">03</span> Output schema rename</h2>
+
+  <p>The most significant change is a rename of all output columns in <code>summary.tsv</code> and all related internal keys, CLI flags, and documentation. The original names <code>overall_*</code> and <code>peak_*</code> were ambiguous: it was unclear from the names alone which peak was the contamination signal and which was the germline-sharing peak. The new names make the distinction explicit.</p>
+
+  <h3>The two peaks explained</h3>
+  <p>The histogram of log2(VAF_B / VAF_A) always contains two regions of interest:</p>
+  <div class="card-grid">
+    <div class="card">
+      <div class="card-head">
+        <div class="card-icon" style="background:var(--accent-soft)">&#8593;</div>
+        <div>
+          <div class="card-name">The max peak</div>
+          <div class="card-sub">Formerly: <code>overall_*</code></div>
+        </div>
+      </div>
+      <p>The tallest bin <em>anywhere</em> in the histogram, regardless of position. Usually the germline-sharing peak near log2=0 (ratio=1). Useful for detecting sample swaps, where two samples share identical variants at equal VAF.</p>
+      <span class="pill blue">New prefix: max_</span>
+    </div>
+    <div class="card">
+      <div class="card-head">
+        <div class="card-icon" style="background:var(--red-soft)">&#8800;</div>
+        <div>
+          <div class="card-name">The non-unity peak</div>
+          <div class="card-sub">Formerly: <code>peak_*</code></div>
+        </div>
+      </div>
+      <p>The tallest bin <em>outside</em> the unity zone (|log2| &gt; 0.3). This is the contamination signal &#8212; variants from the source appearing at a consistent diluted fraction in the recipient. This peak drives all flagging decisions.</p>
+      <span class="pill red">New prefix: non_unity_</span>
+    </div>
+  </div>
+
+  <h3>Complete rename map</h3>
+  <table>
+    <thead><tr><th>Old name</th><th>New name</th><th>What it is</th></tr></thead>
+    <tbody>
+      <tr><td><code>overall_log2</code></td><td><code>max_log2</code></td><td>log&#8322; position of the tallest histogram bin overall</td></tr>
+      <tr><td><code>overall_ratio</code></td><td><code>max_ratio</code></td><td>2^max_log2 &#8212; the ratio at the max peak</td></tr>
+      <tr><td><code>overall_count</code></td><td><code>max_count</code></td><td>Number of variants in the max peak bin</td></tr>
+      <tr><td><code>overall_fraction</code></td><td><code>max_fraction</code></td><td>Fraction of all shared variants in the max peak bin</td></tr>
+      <tr><td><code>peak_log2_ratio</code></td><td><code>non_unity_log2</code></td><td>log&#8322; position of the contamination signal peak</td></tr>
+      <tr><td><code>peak_ratio</code></td><td><code>non_unity_ratio</code></td><td>2^non_unity_log2 &#8212; can be &gt;1 when B is the source</td></tr>
+      <tr><td><code>peak_count</code></td><td><code>non_unity_count</code></td><td>Variants in the contamination peak bin &#8212; the primary flagging metric</td></tr>
+      <tr><td><code>peak_fraction</code></td><td><code>non_unity_fraction</code></td><td>Fraction of all shared variants in the contamination peak bin</td></tr>
+      <tr><td><code>--peak-count</code> (CLI)</td><td><code>--non-unity-count</code></td><td>Threshold on non_unity_count for flagging</td></tr>
+    </tbody>
+  </table>
+
+  <p>The columns <code>contamination_source</code>, <code>contamination_recipient</code>, <code>contamination_fraction</code>, <code>n_shared</code>, <code>n_shared_z</code>, and <code>flagged</code> are unchanged.</p>
+
+  <div class="callout amber">
+    <span class="tag">Not a breaking change</span>
+    <p>The tool is not yet in production use, so this rename carries no downstream risk. It was applied cleanly throughout: output column names, internal dictionary keys, CLI flags, function parameter names, README column descriptions, and unit test assertion messages were all updated in a single commit (<code>5971c48</code>).</p>
+  </div>
+
+  <h3>contamination_fraction precision &#8212; a documented limitation</h3>
+  <p>The review also surfaced that <code>contamination_fraction</code> values cluster heavily around 0.5 for most flagged pairs. This is an inherent property of the bin-centre estimation approach: at <code>--bin-width 0.2</code>, the three bin centres near log2=&#8722;1 correspond to fractions 0.44, 0.50, and 0.57. The tool is designed for <strong>detection</strong> (is there contamination?) not precise quantification. The README column description now explicitly documents this as an estimate bounded by bin_width, not a measurement.</p>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<section id="bugs">
+  <h2><span class="sec-num">04</span> Bugs found and fixed</h2>
+
+  <h3>Bug 1 &#8212; Plot histogram bins misaligned with analysis bins</h3>
+  <p>The most impactful bug. The histogram bars in PNG plot output did not match the <code>non_unity_count</code> value reported in <code>summary.tsv</code>. A run flagging a pair with <code>non_unity_count=17</code> would show a tallest bar of 14 in the corresponding plot &#8212; a misleading discrepancy.</p>
+
+  <div class="change">
+    <div class="change-header">contamination_screen.py &#8212; write_plots() &#8212; bin edge calculation</div>
+    <div class="change-body">
+      <div class="change-before">
+        <div class="change-label">Before</div>
+        <code>bins = np.arange(<br>&#160;&#160;-_LOG2_RANGE,<br>&#160;&#160;_LOG2_RANGE + bin_width,<br>&#160;&#160;bin_width<br>)</code>
+      </div>
+      <div class="change-after">
+        <div class="change-label">After</div>
+        <code>bins = np.arange(<br>&#160;&#160;-_LOG2_RANGE - bin_width / 2,<br>&#160;&#160;_LOG2_RANGE + bin_width,<br>&#160;&#160;bin_width<br>)</code>
+      </div>
+    </div>
+  </div>
+
+  <p><strong>Root cause:</strong> <code>_find_peaks()</code> (which computes <code>non_unity_count</code>) uses bin edges offset by half a bin-width so that a ratio of exactly 1.0 falls at a bin <em>centre</em> rather than a bin <em>edge</em>. The plot in <code>write_plots()</code> used unshifted edges, producing a different binning of the same data. The fix applies the identical half-bin offset to the plot, so both use exactly the same bin boundaries and the bar heights match the reported counts.</p>
+
+  <h3>Bug 2 &#8212; NameError crash in write_plots() when --plots is used</h3>
+  <p>A secondary bug introduced during the variable rename (<code>r</code> &#8594; <code>pair</code>) in the same function. One reference was missed, meaning any run using <code>--plots</code> with at least one flagged pair would crash with a <code>NameError: name 'r' is not defined</code> at the title-setting step.</p>
+
+  <div class="change">
+    <div class="change-header">contamination_screen.py &#8212; write_plots() &#8212; plot title</div>
+    <div class="change-body">
+      <div class="change-before">
+        <div class="change-label">Before</div>
+        <code>ax.set_title(<br>&#160;&#160;f"{na[:45]}  vs  {nb[:45]}\n"<br>&#160;&#160;f"n_shared = {r['n_shared']}",<br>&#160;&#160;fontsize=8,<br>)</code>
+      </div>
+      <div class="change-after">
+        <div class="change-label">After</div>
+        <code>ax.set_title(<br>&#160;&#160;f"{na[:45]}  vs  {nb[:45]}\n"<br>&#160;&#160;f"n_shared = {pair['n_shared']}",<br>&#160;&#160;fontsize=8,<br>)</code>
+      </div>
+    </div>
+  </div>
+
+  <p><strong>Why it wasn&#8217;t caught earlier:</strong> the retrospective test run had been performed without matplotlib installed, so the <code>--plots</code> flag was silently skipped. The bug was caught by a second review pass specifically targeting the rename commit. Matplotlib has since been added to the test environment.</p>
+
+  <div class="callout red">
+    <span class="tag">Lesson</span>
+    <p>When a rename touches a loop variable used across many lines of the same function, a targeted search (<code>grep -n 'old_name'</code>) after the rename is faster and more reliable than relying on tests that may not exercise that branch.</p>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<section id="quality">
+  <h2><span class="sec-num">05</span> Code quality and documentation</h2>
+
+  <p>Several smaller issues were fixed alongside the bugs and the rename.</p>
+
+  <h3>Loop variable name: <code>r</code> &#8594; <code>pair</code></h3>
+  <p>In <code>write_plots()</code>, the loop variable iterating over flagged pairs was named <code>r</code> &#8212; a single-letter name with no indication of what it represented. Renamed to <code>pair</code> throughout the loop body (which also exposed Bug 2 above when the missed reference became obvious).</p>
+
+  <h3>Stale field names in test assertion messages</h3>
+  <p>After the column rename, three assertion messages in <code>tests/test_compare.py</code> still referenced the old field names. The assertions themselves used the correct new keys (so tests <em>passed</em>), but if an assertion had fired, the error message would have raised a secondary <code>KeyError</code> trying to report the failing value &#8212; hiding the original failure behind a confusing second exception.</p>
+
+  <table>
+    <thead><tr><th>Test</th><th>Old message field</th><th>New message field</th></tr></thead>
+    <tbody>
+      <tr><td><code>test_a_contaminates_b</code></td><td><code>result['peak_log2_ratio']</code></td><td><code>result['non_unity_log2']</code></td></tr>
+      <tr><td><code>test_b_contaminates_a</code></td><td><code>result['peak_log2_ratio']</code></td><td><code>result['non_unity_log2']</code></td></tr>
+      <tr><td><code>test_no_contamination_similar_af</code></td><td><code>result['peak_count']</code></td><td><code>result['non_unity_count']</code></td></tr>
+    </tbody>
+  </table>
+
+  <h3>Control sample naming example</h3>
+  <p>Both <code>dx_fetch.py</code> and <code>README.md</code> used <code>26Q98K0076</code> as an example of a control sample ID. The reviewer identified that this does not match the standard naming format used in production. Changed to <code>25357Q0020</code>.</p>
+
+  <h3><code>--exclude</code> help text</h3>
+  <p>The <code>--exclude</code> argparse help string did not mention the default <code>&#39;*Q*&#39;</code> exclusion, making it easy to assume the flag controlled all exclusions. The help text now explicitly states that the default control-sample exclusion is separate and is managed via <code>--no-exclude-controls</code>.</p>
+
+  <h3>Retrospective analysis plan &#8212; completed status</h3>
+  <p><code>retrospective/RETROSPECTIVE_ANALYSIS_PLAN.md</code> describes the analysis plan in present tense, which reads as if the work is still pending. A status notice was added at the top: <em>&#8220;Analysis complete (May 2026). This document records the plan that was followed. Results are in known_contaminated_samples.tsv and run_manifest.tsv.&#8221;</em></p>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<section id="confirmed">
+  <h2><span class="sec-num">06</span> Design decisions confirmed by review</h2>
+
+  <p>Several review comments questioned choices that turned out to be intentional and well-reasoned. These are documented here so the rationale is not lost.</p>
+
+  <div class="card-grid">
+    <div class="card">
+      <div class="card-head">
+        <div class="card-icon" style="background:var(--accent-soft)">&#10003;</div>
+        <div>
+          <div class="card-name">_MAX_GNOMAD_AF as a named constant</div>
+          <div class="card-sub">Not moved inline into argparse</div>
+        </div>
+      </div>
+      <p>The 0.40 threshold is empirically derived &#8212; validated against 15 false-positive markers all with gnomAD AF &gt;0.40 and 17/18 genuine contamination markers with AF &lt;0.40. A named constant at the module level carries this comment; an inline default in argparse would be a poorly documented magic number.</p>
+      <span class="pill blue">Intentional</span>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <div class="card-icon" style="background:var(--accent-soft)">&#10003;</div>
+        <div>
+          <div class="card-name">_LOG2_RANGE not in argparse</div>
+          <div class="card-sub">&#177;4 log2 range stays internal</div>
+        </div>
+      </div>
+      <p><code>_BIN_WIDTH</code> is already exposed as <code>--bin-width</code>. <code>_LOG2_RANGE = 4.0</code> is a pure internal algorithm constant &#8212; &#177;4 log2 comfortably spans any plausible contamination fraction. Exposing it as a CLI flag would add interface noise for a parameter users should never change (and reducing it could silently miss real signals).</p>
+      <span class="pill blue">Intentional</span>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <div class="card-icon" style="background:var(--accent-soft)">&#10003;</div>
+        <div>
+          <div class="card-name">_DEFAULT_EXCLUDE as a named constant</div>
+          <div class="card-sub">Not moved inline into argparse</div>
+        </div>
+      </div>
+      <p>Same rationale as <code>_MAX_GNOMAD_AF</code>. The <code>['*Q*']</code> exclusion is an always-on default controlled by a <em>disable</em> flag (<code>--no-exclude-controls</code>), not an <em>append</em> flag (<code>--exclude</code>). This different pattern is clearer with a named constant.</p>
+      <span class="pill blue">Intentional</span>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <div class="card-icon" style="background:var(--amber-soft)">&#126;</div>
+        <div>
+          <div class="card-name">contamination_fraction precision</div>
+          <div class="card-sub">Bin-centre estimation is a known limitation</div>
+        </div>
+      </div>
+      <p>At bin_width=0.2, discrete bin centres near log2=&#8722;1 give fractions 0.44, 0.50, 0.57. This is inherent to the histogram approach. The tool is designed for <strong>detection</strong>, not precise quantification. Documented in the README. A curve-fit on in-peak variants would give better precision but is a future enhancement.</p>
+      <span class="pill amber">Documented limitation</span>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<section id="future">
+  <h2><span class="sec-num">07</span> Future work flagged</h2>
+
+  <p>Two items were raised during review as out of scope for v1.0 but worth tracking.</p>
+
+  <table>
+    <thead><tr><th>Item</th><th>Context</th><th>Priority</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>Dias pipeline support in dx_fetch.py</strong></td>
+        <td>If a contaminated multiplexed run also includes samples processed by the Dias pipeline, dx_fetch.py cannot discover or download those VCFs. Reviewer noted this as a gap for multiplexed-run contamination investigations.</td>
+        <td><span class="pill amber">Future enhancement</span></td>
+      </tr>
+      <tr>
+        <td><strong>Precise contamination fraction estimation</strong></td>
+        <td>Replace bin-centre fraction estimate with a curve-fit on the in-peak variant log2 ratios. Would give a more accurate fraction at the cost of additional complexity.</td>
+        <td><span class="pill blue">Nice to have</span></td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+</main>
+</div>
+
+<footer>
+  PR #16 Review Briefing &#8212; Joo Wook Ahn, 11 May 2026. contamination_screen v1.0, eastgenomics/contamination-screen. Reviewer: Emma-MacK.
+</footer>
+</body>
+</html>
