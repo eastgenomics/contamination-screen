@@ -4,7 +4,7 @@ dx_fetch.py — Fetch one MYE run's VCFs, plate layout, and FREEMIX data
 from DNAnexus, ready for contamination_screen.py.
 
 Downloads into a local output directory:
-  <output>/vcfs/   *tnhaplotyper2_annotated.vcf.gz + .tbi for each sample
+  <output>/vcfs/   *tnhaplotyper2_normalised_annotated.vcf.gz + .tbi for each sample
   <output>/multiqc_general_stats.txt   (plate layout)
   <output>/multiqc_verifybamid.txt     (FREEMIX / VerifyBamID)
 
@@ -60,7 +60,7 @@ def _die(msg: str, code: int = 1) -> None:
 
 # -- Constants ----------------------------------------------------------------
 
-_VCF_NAME_PAT      = "*tnhaplotyper2_annotated.vcf.gz"
+_VCF_NAME_PAT      = "*tnhaplotyper2_normalised_annotated.vcf.gz"
 _VCF_FOLDER_PAT    = "*/eggd_vep-*"
 _PLATE_LAYOUT_NAME = "multiqc_general_stats.txt"
 _FREEMIX_NAME      = "multiqc_verifybamid.txt"
