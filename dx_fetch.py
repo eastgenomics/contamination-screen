@@ -93,6 +93,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--include", action="append", default=["*tnhaplotyper2_normalised_annotated.vcf.gz"], metavar="PATTERN",
         help="Include VCFs whose filename matches this glob. Repeatable. "
+             "The default search term is `*tnhaplotyper2_normalised_annotated.vcf.gz`."
              "Please note that '*Q*' is excluded by default, which can be "
              "overridden with the `--no-exclude-controls` flag."
     )
