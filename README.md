@@ -169,7 +169,7 @@ python dx_fetch.py PROJECT [--output DIR] [--include PATTERN] [--exclude PATTERN
 
 `PROJECT` may be a project ID (`project-xxx...`), an exact project name, or a
 glob pattern (e.g. `002_260423*MYE`) that must resolve to exactly one project.
-The default search term for VCFs is `*tnhaplotyper2_normalised_annotated.vcf.gz`";
+The default search term for VCFs is `*tnhaplotyper2_normalised_annotated.vcf.gz`;
 search terms can be invoked using the `--include` argument, which is repeatable (see examples below).
 
 Downloads into `<output>/` (default: `./<project_name>/`):
