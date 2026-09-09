@@ -31,6 +31,7 @@ import fnmatch
 import os
 import subprocess
 import sys
+from functools import reduce
 from pathlib import Path
 
 # -- dx-grab import -----------------------------------------------------------
@@ -60,7 +61,6 @@ def _die(msg: str, code: int = 1) -> None:
 
 # -- Constants ----------------------------------------------------------------
 
-_VCF_NAME_PAT      = "*tnhaplotyper2_normalised_annotated.vcf.gz"
 _VCF_FOLDER_PAT    = "*/eggd_vep-*"
 _PLATE_LAYOUT_NAME = "multiqc_general_stats.txt"
 _FREEMIX_NAME      = "multiqc_verifybamid.txt"
@@ -89,6 +89,13 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--output", "-o", default=None, metavar="DIR",
         help="Local output directory. Default: ./<project_name>/",
+    )
+    p.add_argument(
+        "--include", action="append", default=["*tnhaplotyper2_normalised_annotated.vcf.gz"], metavar="PATTERN",
+        help="Include VCFs whose filename matches this glob. Repeatable. "
+             "The default search term is `*tnhaplotyper2_normalised_annotated.vcf.gz`."
+             "Please note that '*Q*' is excluded by default, which can be "
+             "overridden with the `--no-exclude-controls` flag."
     )
     p.add_argument(
         "--exclude", action="append", default=[], metavar="PATTERN",
@@ -245,7 +252,8 @@ def main() -> None:
     # --- Discover files ------------------------------------------------------
 
     print()
-    vcf_files = dx_grab.find_files(dxpy, proj_dict, _VCF_NAME_PAT, _VCF_FOLDER_PAT)
+    vcf_files = [dx_grab.find_files(dxpy, proj_dict, pat, _VCF_FOLDER_PAT) for pat in args.include]
+    vcf_files = reduce(list.__add__, vcf_files)
 
     if exclude:
         before = len(vcf_files)
@@ -260,7 +268,7 @@ def main() -> None:
 
     if not vcf_files:
         print(
-            f"ERROR: No VCFs matching '{_VCF_NAME_PAT}' found in "
+            f"ERROR: No VCFs matching '{"/".join(args.include)}' found in "
             f"'{_VCF_FOLDER_PAT}' in project '{project_name}'.",
             file=sys.stderr,
         )
