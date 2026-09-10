@@ -124,7 +124,18 @@ def parse_args() -> argparse.Namespace:
         "--dry-run", action="store_true",
         help="List matched files without downloading anything.",
     )
-    return p.parse_args()
+
+    args = p.parse_args()
+
+    # The following is a workaround for the known, and seemingly unpopular, decision 
+    # by the argparse team regarding the "append" action (see https://github.com/python/cpython/issues/60603).
+    # When the "append" action is used alongside a default list, argparse will add your 
+    # new inputs to that default list, instead of overriding it. Here, we're getting rid of the default
+    # entry if the user specifies anything, because it messes up the _print_command output later.
+    if len(args.include) > 1:
+        args.include.pop(0)
+
+    return args
 
 
 # -- MultiQC file selection ---------------------------------------------------
@@ -186,8 +197,9 @@ def index_vcf(vcf_path: Path) -> bool:
 # -- Output command -----------------------------------------------------------
 
 def _print_command(outdir: Path, vcf_dir: Path,
+                   plate_file: dict | None,
+                   freemix_file: dict | None,
                    include: list[str] = [_DEFAULT_INCLUDE],
-                   plate_file: dict | None, freemix_file: dict | None,
                    dry_run: bool = False) -> None:
     """Print the ready-to-run contamination_screen.py command.
 
@@ -201,7 +213,7 @@ def _print_command(outdir: Path, vcf_dir: Path,
     print(prefix)
     parts = []
     parts.append(f"python contamination_screen.py {vcf_dir}")
-    if len(include > 1) or include[0] != _DEFAULT_INCLUDE:
+    if len(include) > 1 or include[0] != _DEFAULT_INCLUDE:
         for pattern in include:
             parts.append(f"    --vcf-glob {pattern}")
     parts.append(f"    --outdir {outdir / 'results'}")
@@ -258,7 +270,9 @@ def main() -> None:
 
     print()
     vcf_files = [dx_grab.find_files(dxpy, proj_dict, pat, _VCF_FOLDER_PAT) for pat in args.include]
-    vcf_files = chain(*vcf_files)
+    vcf_files = list(chain(*vcf_files))
+    # This addresses any potential duplication from multiple --include invocations
+    vcf_files = [dict(t) for t in dict.fromkeys(tuple(vcf.items()) for vcf in vcf_files)]
 
     if exclude:
         before = len(vcf_files)
@@ -379,7 +393,7 @@ def main() -> None:
     # locally — they may have been skipped if archived and --skip-archived was set.
     plate_ready   = plate_file   if (outdir / _PLATE_LAYOUT_NAME).exists() else None
     freemix_ready = freemix_file if (outdir / _FREEMIX_NAME).exists()      else None
-    _print_command(outdir, vcf_dir, args.include, plate_ready, freemix_ready)
+    _print_command(outdir, vcf_dir, plate_ready, freemix_ready, args.include)
 
 
 if __name__ == "__main__":

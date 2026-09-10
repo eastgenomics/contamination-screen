@@ -842,7 +842,8 @@ def main() -> None:
         sys.exit(1)
 
     vcf_files = [args.vcf_dir.glob(pattern) for pattern in args.vcf_glob]
-    vcf_files = sorted(chain(*vcf_files))
+    vcf_files = sorted(set(list(chain(*vcf_files))))
+
     if not vcf_files:
         logging.error('No VCF files matching "%s" in %s', args.vcf_glob, args.vcf_dir)
         sys.exit(1)
