@@ -23,7 +23,7 @@ import subprocess
 import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor
-from itertools import combinations
+from itertools import chain, combinations
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -126,8 +126,8 @@ def parse_args() -> argparse.Namespace:
              "patterns visible. If not provided, samples are ordered by filename.",
     )
     p.add_argument(
-        "--vcf-glob", default=VCF_GLOB,
-        help="Glob pattern for VCF files in vcf_dir (default: %(default)s)",
+        "--vcf-glob", action="append", default=[VCF_GLOB], metavar="PATTERN",
+        help="Glob pattern for VCF files in vcf_dir (default: %(default)s). Repeatable.",
     )
     p.add_argument(
         "--bin-width", type=float, default=_BIN_WIDTH,
@@ -841,7 +841,8 @@ def main() -> None:
         logging.error("VCF directory not found: %s", args.vcf_dir)
         sys.exit(1)
 
-    vcf_files = sorted(args.vcf_dir.glob(args.vcf_glob))
+    vcf_files = [args.vcf_dir.glob(pattern) for pattern in args.vcf_glob]
+    vcf_files = sorted(chain(*vcf_files))
     if not vcf_files:
         logging.error('No VCF files matching "%s" in %s', args.vcf_glob, args.vcf_dir)
         sys.exit(1)
