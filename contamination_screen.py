@@ -156,7 +156,17 @@ def parse_args() -> argparse.Namespace:
         help="Minimum recipient FREEMIX fraction (0–1) required for flagging "
              "when --freemix-file is provided (default: %(default)s = 15%%).",
     )
-    return p.parse_args()
+    args = p.parse_args()
+
+    # The following is a workaround for the known, and seemingly unpopular, decision 
+    # by the argparse team regarding the "append" action (see https://github.com/python/cpython/issues/60603).
+    # When the "append" action is used alongside a default list, argparse will add your 
+    # new inputs to that default list, instead of overriding it. Here, we're getting rid of the default
+    # entry if the user specifies anything, because it messes up the _print_command output later.
+    if len(args.vcf_glob) > 1:
+        args.vcf_glob.pop(0)
+
+    return args
 
 
 # -- bcftools helpers ---------------------------------------------------------
@@ -845,7 +855,7 @@ def main() -> None:
     vcf_files = sorted(set(list(chain(*vcf_files))))
 
     if not vcf_files:
-        logging.error('No VCF files matching "%s" in %s', args.vcf_glob, args.vcf_dir)
+        logging.error(f"No VCF files matching \"{"/".join(args.vcf_glob)}\" in {args.vcf_dir}")
         sys.exit(1)
 
     n = len(vcf_files)
