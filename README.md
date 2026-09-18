@@ -162,13 +162,15 @@ single MYE run from DNAnexus and prints the ready-to-run
 `contamination_screen.py` command.
 
 ```bash
-python dx_fetch.py PROJECT [--output DIR] [--exclude PATTERN]
+python dx_fetch.py PROJECT [--output DIR] [--include PATTERN] [--exclude PATTERN]
                            [--yes] [--skip-archived] [--skip-existing]
                            [--dry-run]
 ```
 
 `PROJECT` may be a project ID (`project-xxx...`), an exact project name, or a
 glob pattern (e.g. `002_260423*MYE`) that must resolve to exactly one project.
+The default search term for VCFs is `*tnhaplotyper2_normalised_annotated.vcf.gz`;
+search terms can be invoked using the `--include` argument, which is repeatable (see examples below).
 
 Downloads into `<output>/` (default: `./<project_name>/`):
 
@@ -184,6 +186,12 @@ by default. Pass `--no-exclude-controls` to override.
 ```bash
 # List what would be downloaded (no download)
 python dx_fetch.py '002_260423*MYE' --dry-run
+
+# Search for VCFs with a user-defined suffix
+python dx_fetch.py '002_260423*MYE' --include "*tnhaplotyper*vcf.gz"
+
+# Invoke multiple search terms
+python dx_fetch.py '002_260423*MYE' --include "*tnhaplotyper*vcf.gz" --include "*other*vcf.gz"
 
 # Download — output defaults to ./002_260423_A01303_0760_AHLTLCDRX7_MYE/
 python dx_fetch.py '002_260423*MYE'

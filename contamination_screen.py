@@ -23,7 +23,7 @@ import subprocess
 import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor
-from itertools import combinations
+from itertools import chain, combinations
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -126,8 +126,8 @@ def parse_args() -> argparse.Namespace:
              "patterns visible. If not provided, samples are ordered by filename.",
     )
     p.add_argument(
-        "--vcf-glob", default=VCF_GLOB,
-        help="Glob pattern for VCF files in vcf_dir (default: %(default)s)",
+        "--vcf-glob", action="append", default=[VCF_GLOB], metavar="PATTERN",
+        help="Glob pattern for VCF files in vcf_dir (default: %(default)s). Repeatable.",
     )
     p.add_argument(
         "--bin-width", type=float, default=_BIN_WIDTH,
@@ -156,7 +156,17 @@ def parse_args() -> argparse.Namespace:
         help="Minimum recipient FREEMIX fraction (0–1) required for flagging "
              "when --freemix-file is provided (default: %(default)s = 15%%).",
     )
-    return p.parse_args()
+    args = p.parse_args()
+
+    # The following is a workaround for the known, and seemingly unpopular, decision 
+    # by the argparse team regarding the "append" action (see https://github.com/python/cpython/issues/60603).
+    # When the "append" action is used alongside a default list, argparse will add your 
+    # new inputs to that default list, instead of overriding it. Here, we're getting rid of the default
+    # entry if the user specifies anything, because it messes up the _print_command output later.
+    if len(args.vcf_glob) > 1:
+        args.vcf_glob.pop(0)
+
+    return args
 
 
 # -- bcftools helpers ---------------------------------------------------------
@@ -841,9 +851,11 @@ def main() -> None:
         logging.error("VCF directory not found: %s", args.vcf_dir)
         sys.exit(1)
 
-    vcf_files = sorted(args.vcf_dir.glob(args.vcf_glob))
+    vcf_files = [args.vcf_dir.glob(pattern) for pattern in args.vcf_glob]
+    vcf_files = sorted(set(list(chain(*vcf_files))))
+
     if not vcf_files:
-        logging.error('No VCF files matching "%s" in %s', args.vcf_glob, args.vcf_dir)
+        logging.error(f"No VCF files matching \"{"/".join(args.vcf_glob)}\" in {args.vcf_dir}")
         sys.exit(1)
 
     n = len(vcf_files)

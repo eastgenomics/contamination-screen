@@ -14,3 +14,4 @@ retrospective/vcfs_2025.json
 retrospective/vcfs_2026.json
 retrospective/multiqc/
 *.log
+venv/

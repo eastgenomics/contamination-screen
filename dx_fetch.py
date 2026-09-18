@@ -31,6 +31,7 @@ import fnmatch
 import os
 import subprocess
 import sys
+from itertools import chain
 from pathlib import Path
 
 # -- dx-grab import -----------------------------------------------------------
@@ -60,10 +61,10 @@ def _die(msg: str, code: int = 1) -> None:
 
 # -- Constants ----------------------------------------------------------------
 
-_VCF_NAME_PAT      = "*tnhaplotyper2_normalised_annotated.vcf.gz"
 _VCF_FOLDER_PAT    = "*/eggd_vep-*"
 _PLATE_LAYOUT_NAME = "multiqc_general_stats.txt"
 _FREEMIX_NAME      = "multiqc_verifybamid.txt"
+_DEFAULT_INCLUDE   = "*tnhaplotyper2_normalised_annotated.vcf.gz"
 _DEFAULT_EXCLUDE   = ["*Q*"]
 
 # MultiQC folder preference — first match wins (compared case-insensitively)
@@ -91,6 +92,13 @@ def parse_args() -> argparse.Namespace:
         help="Local output directory. Default: ./<project_name>/",
     )
     p.add_argument(
+        "--include", action="append", default=[_DEFAULT_INCLUDE], metavar="PATTERN",
+        help="Include VCFs whose filename matches this glob. Repeatable. "
+             "The default search term is `*tnhaplotyper2_normalised_annotated.vcf.gz`."
+             "Please note that '*Q*' is excluded by default, which can be "
+             "overridden with the `--no-exclude-controls` flag."
+    )
+    p.add_argument(
         "--exclude", action="append", default=[], metavar="PATTERN",
         help="Exclude VCFs whose filename matches this glob. Repeatable. "
              "The default '*Q*' exclusion is applied separately via "
@@ -116,7 +124,18 @@ def parse_args() -> argparse.Namespace:
         "--dry-run", action="store_true",
         help="List matched files without downloading anything.",
     )
-    return p.parse_args()
+
+    args = p.parse_args()
+
+    # The following is a workaround for the known, and seemingly unpopular, decision 
+    # by the argparse team regarding the "append" action (see https://github.com/python/cpython/issues/60603).
+    # When the "append" action is used alongside a default list, argparse will add your 
+    # new inputs to that default list, instead of overriding it. Here, we're getting rid of the default
+    # entry if the user specifies anything, because it messes up the _print_command output later.
+    if len(args.include) > 1:
+        args.include.pop(0)
+
+    return args
 
 
 # -- MultiQC file selection ---------------------------------------------------
@@ -178,21 +197,26 @@ def index_vcf(vcf_path: Path) -> bool:
 # -- Output command -----------------------------------------------------------
 
 def _print_command(outdir: Path, vcf_dir: Path,
-                   plate_file: dict | None, freemix_file: dict | None,
+                   plate_file: dict | None,
+                   freemix_file: dict | None,
+                   include: list[str] = [_DEFAULT_INCLUDE],
                    dry_run: bool = False) -> None:
     """Print the ready-to-run contamination_screen.py command.
 
     Includes --plate-layout and --freemix-file only when the corresponding
     file dicts are non-None. Appends a NOTE for each omitted optional file.
     """
+
     prefix = "\n# Suggested command" + (
         " (dry run \u2014 adjust paths as needed):" if dry_run else ":"
     )
     print(prefix)
-    parts = [
-        f"python contamination_screen.py {vcf_dir}",
-        f"    --outdir {outdir / 'results'}",
-    ]
+    parts = []
+    parts.append(f"python contamination_screen.py {vcf_dir}")
+    if len(include) > 1 or include[0] != _DEFAULT_INCLUDE:
+        for pattern in include:
+            parts.append(f"    --vcf-glob {pattern}")
+    parts.append(f"    --outdir {outdir / 'results'}")
     if plate_file:
         parts.append(f"    --plate-layout {outdir / _PLATE_LAYOUT_NAME}")
     if freemix_file:
@@ -245,7 +269,10 @@ def main() -> None:
     # --- Discover files ------------------------------------------------------
 
     print()
-    vcf_files = dx_grab.find_files(dxpy, proj_dict, _VCF_NAME_PAT, _VCF_FOLDER_PAT)
+    vcf_files = [dx_grab.find_files(dxpy, proj_dict, pat, _VCF_FOLDER_PAT) for pat in args.include]
+    vcf_files = list(chain(*vcf_files))
+    # This addresses any potential duplication from multiple --include invocations
+    vcf_files = [dict(t) for t in dict.fromkeys(tuple(vcf.items()) for vcf in vcf_files)]
 
     if exclude:
         before = len(vcf_files)
@@ -260,7 +287,7 @@ def main() -> None:
 
     if not vcf_files:
         print(
-            f"ERROR: No VCFs matching '{_VCF_NAME_PAT}' found in "
+            f"ERROR: No VCFs matching '{"/".join(args.include)}' found in "
             f"'{_VCF_FOLDER_PAT}' in project '{project_name}'.",
             file=sys.stderr,
         )
@@ -366,7 +393,7 @@ def main() -> None:
     # locally — they may have been skipped if archived and --skip-archived was set.
     plate_ready   = plate_file   if (outdir / _PLATE_LAYOUT_NAME).exists() else None
     freemix_ready = freemix_file if (outdir / _FREEMIX_NAME).exists()      else None
-    _print_command(outdir, vcf_dir, plate_ready, freemix_ready)
+    _print_command(outdir, vcf_dir, plate_ready, freemix_ready, args.include)
 
 
 if __name__ == "__main__":
